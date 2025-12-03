@@ -7,7 +7,11 @@ ShellyElevate is a **background service** for the **Shelly Wall Display XL** tha
 
 ## Why?
 
-The Shelly Wall Display XL has great hardware (temperature/humidity sensors, light sensor, proximity sensor, 4 hardware buttons, relays) but no native way to expose these to Home Assistant when using the official HA app. ShellyElevate runs as a background service and:
+The built-in WebView of the Shelly Wall Display is **slow and buggy**. It kept crashing every few hours (sometimes days, mostly hours), and was laggy and unresponsive. With the **native Home Assistant Companion app**, all these problems disappeared - it's fast, stable, and just works.
+
+However, switching to a third-party app means you lose access to the great hardware features: temperature/humidity sensors, light sensor, proximity sensor, 4 hardware buttons, and relays. There's no native way to expose these to Home Assistant when using the official HA app (or any other dashboard app like Fully Kiosk, WallPanel, etc.).
+
+**That's why this background service exists** - it lets you use whatever app you like for your dashboard while still having full access to all hardware features. ShellyElevate runs silently in the background and:
 
 - Publishes all sensors and button events to Home Assistant via **MQTT**
 - Provides **screen dimming** with idle timeout (acts as a screensaver)
@@ -89,6 +93,23 @@ adb reboot
 ```
 
 After reboot, ShellyElevate will start automatically and launch the Home Assistant app (if watchdog is enabled).
+
+## Recommended Setup
+
+This is the setup I use on my Shelly Wall Display XL:
+
+1. **Ultra Small Launcher** - Replace Shelly's default launcher so their app doesn't start automatically
+   - Download: [ultra-small-launcher.apk](https://blakadder.com/assets/files/ultra-small-launcher.apk)
+   - Install via `adb install ultra-small-launcher.apk`
+   - Set as default launcher when prompted (or via Settings → Apps → Default Apps)
+   - Tip: Open the launcher anytime with `adb shell input keyevent 3` (HOME key)
+
+2. **Home Assistant Companion (Minimal)** - Lightweight version of the HA app
+   - Download from: [Home Assistant Android Releases](https://github.com/home-assistant/android/releases)
+   - Look for `home-assistant-android-minimal-*.apk`
+   - This is the default app monitored by the watchdog
+
+3. **ShellyElevateService** - This service running in the background
 
 ## Configuration
 
