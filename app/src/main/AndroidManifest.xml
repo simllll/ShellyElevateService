@@ -3,21 +3,16 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.BODY_SENSORS" />
     <uses-permission
         android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"
         tools:ignore="HighSamplingRate" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <uses-permission android:name="android.hardware.sensor.proximity"/>
 
@@ -30,29 +25,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ShellyElevateV2"
         android:usesCleartextTraffic="true">
-        <receiver
-            android:name=".screensavers.UserInteractionReceiver"
-            android:enabled="true"
-            android:exported="true" />
-
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:hardwareAccelerated="true"
-            android:label="ShellyElevateV2"
-            android:theme="@style/Theme.ShellyElevateV2">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-        <activity
-            android:name=".SettingsActivity"
-            android:exported="true"
-            android:hardwareAccelerated="true"
-            android:label="ShellyElevateV2"
-            android:theme="@style/Theme.ShellyElevateV2" />
-        <activity android:name=".screensavers.activities.DigitalClockAndDateScreenSaverActivity" />
 
         <receiver
             android:name=".BootReceiver"
@@ -63,9 +35,10 @@
         </receiver>
 
         <service
-            android:name=".KioskService"
+            android:name=".ShellyDisplayService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
     </application>
 
 </manifest>

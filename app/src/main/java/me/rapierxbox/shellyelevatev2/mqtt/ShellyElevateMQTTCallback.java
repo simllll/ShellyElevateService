@@ -4,7 +4,6 @@ import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mApplicatio
 import static me.rapierxbox.shellyelevatev2.Constants.*;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mDeviceHelper;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mMQTTServer;
-import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mScreenSaverManager;
 
 import android.content.Intent;
 import android.util.Log;
@@ -42,7 +41,6 @@ public class ShellyElevateMQTTCallback implements MqttCallback {
             case MQTT_TOPIC_UPDATE:
 	            mMQTTServer.publishStatus();
 	            break;
-                // IMPRV: new logic to handle infinite relays
             case MQTT_TOPIC_RELAY_COMMAND:
                 mDeviceHelper.setRelay(0, new String(message.getPayload(), StandardCharsets.UTF_8).contains("ON"));
                 break;
@@ -50,14 +48,18 @@ public class ShellyElevateMQTTCallback implements MqttCallback {
                 mDeviceHelper.setRelay(1, new String(message.getPayload(), StandardCharsets.UTF_8).contains("ON"));
                 break;
             case MQTT_TOPIC_REFRESH_WEBVIEW_BUTTON:
-                Intent intent = new Intent(INTENT_SETTINGS_CHANGED);
-                LocalBroadcastManager.getInstance(ShellyElevateApplication.mApplicationContext).sendBroadcast(intent);
+                Intent refreshIntent = new Intent(INTENT_SETTINGS_CHANGED);
+                LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(refreshIntent);
                 break;
             case MQTT_TOPIC_SLEEP_BUTTON:
-                mScreenSaverManager.startScreenSaver();
+                // Broadcast to ShellyDisplayService to dim screen
+                Intent sleepIntent = new Intent(INTENT_SCREEN_SAVER_STARTED);
+                LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(sleepIntent);
                 break;
             case MQTT_TOPIC_WAKE_BUTTON:
-                mScreenSaverManager.stopScreenSaver();
+                // Broadcast to ShellyDisplayService to wake screen
+                Intent wakeIntent = new Intent(INTENT_SCREEN_SAVER_STOPPED);
+                LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(wakeIntent);
                 break;
             case MQTT_TOPIC_REBOOT_BUTTON:
                 long deltaTime = System.currentTimeMillis() - ShellyElevateApplication.getApplicationStartTime();

@@ -204,7 +204,8 @@ public class MQTTServer {
                     scheduler.schedule(() -> publishProximity(mDeviceSensorManager.getLastMeasuredDistance()), 250, TimeUnit.MILLISECONDS);
                 }
 
-                scheduler.schedule(() -> publishSleeping(mScreenSaverManager.isScreenSaverRunning()), 300, TimeUnit.MILLISECONDS);
+                // Sleeping state is published by ShellyDisplayService when it dims/wakes
+                scheduler.schedule(() -> publishSleeping(false), 300, TimeUnit.MILLISECONDS);
 
             } catch (Exception e) {
                 Log.e("MQTT", "publishStatus failed", e);
@@ -291,13 +292,24 @@ public class MQTTServer {
     }
 
     public void publishButton(int number) {
+        // Publish timestamp sensor (for "last pressed at")
         long epochMillis = System.currentTimeMillis();
-        String payload = "{\"last_update\": " + epochMillis + "}";
-        publishInternal(parseTopic(MQTT_TOPIC_BUTTON_STATE) + "/" + number, payload, 1, false);
+        String timestampPayload = "{\"last_update\": " + epochMillis + "}";
+        publishInternal(parseTopic(MQTT_TOPIC_BUTTON_STATE) + "/" + number, timestampPayload, 1, false);
+
+        // Publish event (for automations)
+        String eventPayload = "{\"event_type\": \"press\"}";
+        publishInternal(parseTopic(MQTT_TOPIC_BUTTON_EVENT) + "/" + number, eventPayload, 1, false);
     }
 
     public void publishSwipeEvent() {
         publishInternal(parseTopic(MQTT_TOPIC_SWIPE_EVENT), "{\"event_type\": \"swipe\"}", 1, false);
+    }
+
+    public void publishUnknownKey(int keyCode, boolean pressed) {
+        String payload = "{\"key_code\": " + keyCode + ", \"pressed\": " + pressed + ", \"timestamp\": " + System.currentTimeMillis() + "}";
+        publishInternal(parseTopic(MQTT_TOPIC_UNKNOWN_KEY), payload, 1, false);
+        Log.i("MQTT", "Published unknown key: " + payload);
     }
 
     public void publishHello() {
@@ -382,6 +394,7 @@ public class MQTTServer {
         var buttons = DeviceModel.getReportedDevice().buttons;
         if (buttons > 0) {
             for (int i = 0; i < buttons; i++) {
+                // Timestamp sensor (for "last pressed at")
                 JSONObject sensorPayload = new JSONObject();
                 sensorPayload.put("p", "sensor");
                 sensorPayload.put("name", "Button " + i + " Last Press");
@@ -396,6 +409,16 @@ public class MQTTServer {
                 );
 
                 components.put(clientId + "_button_" + i + "_lastpress", sensorPayload);
+
+                // Event entity (for automations)
+                JSONObject eventPayload = new JSONObject();
+                eventPayload.put("p", "event");
+                eventPayload.put("name", "Button " + i);
+                eventPayload.put("state_topic", parseTopic(MQTT_TOPIC_BUTTON_EVENT) + "/" + i);
+                eventPayload.put("device_class", "button");
+                eventPayload.put("event_types", new JSONArray().put("press"));
+                eventPayload.put("unique_id", clientId + "_button_" + i + "_event");
+                components.put(clientId + "_button_" + i + "_event", eventPayload);
             }
         }
 

@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import me.rapierxbox.shellyelevatev2.helper.ServiceHelper
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -21,12 +22,9 @@ class CrashHandler(private val context: Context) : Thread.UncaughtExceptionHandl
 
             Log.e("CrashHandler", "App crashed", throwable)
 
-            // Restart app in 2 seconds
-            val restartIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            }
-
-            val pendingIntent = PendingIntent.getActivity(
+            // Restart service in 2 seconds
+            val restartIntent = Intent(context, ShellyDisplayService::class.java)
+            val pendingIntent = PendingIntent.getForegroundService(
                 context,
                 0,
                 restartIntent,

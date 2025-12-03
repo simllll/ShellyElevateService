@@ -43,6 +43,14 @@ public class Constants {
     public static final String SP_MQTT_PASSWORD = "mqttPassword";
     public static final String SP_MQTT_CLIENTID = "mqttDeviceId";
 
+    //Debug SP Keys
+    public static final String SP_DEBUG_KEYS = "debugKeys";
+
+    //App Watchdog SP Keys
+    public static final String SP_WATCHDOG_ENABLED = "watchdogEnabled";
+    public static final String SP_WATCHDOG_PACKAGE = "watchdogPackage";
+    public static final String SP_WATCHDOG_INTERVAL = "watchdogInterval";
+
     //ScreenSaver intents
     public static final String INTENT_SCREEN_SAVER_STARTED = "me.rapierxbox.shellyelevatev2.SCREEN_SAVER_STARTED";
     public static final String INTENT_SCREEN_SAVER_STOPPED = "me.rapierxbox.shellyelevatev2.SCREEN_SAVER_STOPPED";
@@ -78,6 +86,7 @@ public class Constants {
     public static final String MQTT_TOPIC_UPDATE = "shellyelevatev2/%s/update";
     public static final String MQTT_TOPIC_HELLO = "shellyelevatev2/%s/hello";
     public static final String MQTT_TOPIC_BUTTON_STATE = "shellyelevatev2/%s/button";
+    public static final String MQTT_TOPIC_BUTTON_EVENT = "shellyelevatev2/%s/button_event";
     public static final String MQTT_TOPIC_SLEEP_BUTTON = "shellyelevatev2/%s/sleep";
     public static final String MQTT_TOPIC_WAKE_BUTTON = "shellyelevatev2/%s/wake";
     public static final String MQTT_TOPIC_REFRESH_WEBVIEW_BUTTON = "shellyelevatev2/%s/refresh_webview";
@@ -85,4 +94,5 @@ public class Constants {
     public static final String MQTT_TOPIC_SWIPE_EVENT = "shellyelevatev2/%s/swipe_event";
     public static final String MQTT_TOPIC_SLEEPING_BINARY_SENSOR = "shellyelevatev2/%s/sleeping";
     public static final String MQTT_TOPIC_HOME_ASSISTANT_STATUS = "homeassistant/status";
+    public static final String MQTT_TOPIC_UNKNOWN_KEY = "shellyelevatev2/%s/unknown_key";
 }

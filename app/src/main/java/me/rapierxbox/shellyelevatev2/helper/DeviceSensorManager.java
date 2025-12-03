@@ -8,7 +8,6 @@ import static me.rapierxbox.shellyelevatev2.Constants.SP_AUTOMATIC_BRIGHTNESS;
 import static me.rapierxbox.shellyelevatev2.Constants.SP_MIN_BRIGHTNESS;
 import static me.rapierxbox.shellyelevatev2.Constants.SP_WAKE_ON_PROXIMITY;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mMQTTServer;
-import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mScreenSaverManager;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mSharedPreferences;
 
 import android.content.Context;

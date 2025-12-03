@@ -42,13 +42,17 @@ public class DeviceHelper {
 
     public DeviceHelper() {
         for (String brightnessFile : screenBrightnessFiles) {
-            if (new File(brightnessFile).exists()) {
+            File f = new File(brightnessFile);
+            if (f.exists()) {
                 screenBrightnessFile = brightnessFile;
+                Log.i(TAG, "Found brightness file: " + brightnessFile + " (canWrite=" + f.canWrite() + ")");
             }
         }
         if (screenBrightnessFile == null) {
             Log.wtf(TAG, "no brightness file found");
             screenBrightnessFile = "";
+        } else {
+            Log.i(TAG, "Using brightness file: " + screenBrightnessFile);
         }
     }
 
@@ -77,12 +81,25 @@ public class DeviceHelper {
         brightness = Math.max(0, Math.min(brightness, 255));
 
         Log.d(TAG, "Set brightness to: " + brightness);
-        if (!Settings.System.canWrite(mApplicationContext)) {
-            Log.i(TAG, "Please disable androids automatic brightness or give the app the change settings permission.");
+
+        // Try Android Settings API first
+        if (Settings.System.canWrite(mApplicationContext)) {
+            try {
+                Settings.System.putInt(mApplicationContext.getContentResolver(),
+                    Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                Settings.System.putInt(mApplicationContext.getContentResolver(),
+                    Settings.System.SCREEN_BRIGHTNESS,
+                    brightness);
+                Log.d(TAG, "Set brightness via Settings API: " + brightness);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to set brightness via Settings API: " + e.getMessage());
+            }
         } else {
-            Settings.System.putInt(mApplicationContext.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+            Log.w(TAG, "App cannot write system settings - brightness control may not work");
         }
 
+        // Also try sysfs as backup
         writeFileContent(screenBrightnessFile, String.valueOf(brightness));
     }
 
@@ -121,7 +138,7 @@ public class DeviceHelper {
         try
         {
             var content = readFileContent(tempAndHumFile);
-            if (content == null || content == "") return -999;
+            if (content == null || content.isEmpty()) return -999;
 
             String[] tempSplit = content.split(":");
             double temp = (Double.parseDouble(tempSplit[1]) * 175.0 / 65535.0) - 45.0;
@@ -137,7 +154,7 @@ public class DeviceHelper {
     public double getHumidity() {
         try {
             var content = readFileContent(tempAndHumFile);
-            if (content == null || content == "") return -999;
+            if (content == null || content.isEmpty()) return -999;
 
             String[] humiditySplit = content.split(":");
             double humidity = Double.parseDouble(humiditySplit[0]) * 100.0 / 65535.0;
@@ -182,10 +199,12 @@ public class DeviceHelper {
     }
 
     private static void writeFileContent(String filePath, String content) {
+        Log.d(TAG, "Writing '" + content + "' to " + filePath);
         try (FileWriter writer = new FileWriter(filePath)) {
             writer.write(content);
+            Log.d(TAG, "Write successful to " + filePath);
         } catch (IOException e) {
-            Log.e(TAG, "Error when writing file with path:" + filePath + ":" + Objects.requireNonNull(e.getMessage()));
+            Log.e(TAG, "FAILED to write to " + filePath + ": " + e.getMessage());
         }
     }
 }

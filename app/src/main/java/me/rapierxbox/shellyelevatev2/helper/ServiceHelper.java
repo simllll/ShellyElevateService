@@ -17,7 +17,7 @@ import android.util.Log;
 
 import java.util.function.Consumer;
 
-import me.rapierxbox.shellyelevatev2.KioskService;
+import me.rapierxbox.shellyelevatev2.ShellyDisplayService;
 
 public class ServiceHelper {
     public static void getHAURL(Context context, Consumer<String> action) {
@@ -116,9 +116,9 @@ public class ServiceHelper {
         }
     }
 
-    public static void ensureKioskService(Context context) {
-        Log.i("KioskService", "Starting KioskService...");
-        Intent serviceIntent = new Intent(context, KioskService.class);
+    public static void ensureDisplayService(Context context) {
+        Log.i("ShellyDisplayService", "Starting ShellyDisplayService...");
+        Intent serviceIntent = new Intent(context, ShellyDisplayService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent);
         } else {

@@ -1,14 +1,13 @@
 package me.rapierxbox.shellyelevatev2;
 
 import static me.rapierxbox.shellyelevatev2.Constants.INTENT_SETTINGS_CHANGED;
-import static me.rapierxbox.shellyelevatev2.Constants.INTENT_WEBVIEW_INJECT_JAVASCRIPT;
-import static me.rapierxbox.shellyelevatev2.Constants.MQTT_TOPIC_HELLO;
+import static me.rapierxbox.shellyelevatev2.Constants.INTENT_SCREEN_SAVER_STARTED;
+import static me.rapierxbox.shellyelevatev2.Constants.INTENT_SCREEN_SAVER_STOPPED;
 import static me.rapierxbox.shellyelevatev2.Constants.SP_HTTP_SERVER_ENABLED;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mApplicationContext;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mDeviceHelper;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mDeviceSensorManager;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mMediaHelper;
-import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mScreenSaverManager;
 import static me.rapierxbox.shellyelevatev2.ShellyElevateApplication.mSharedPreferences;
 
 import android.content.BroadcastReceiver;
@@ -67,8 +66,6 @@ public class HttpServer extends NanoHTTPD {
                 return handleMediaRequest(session);
             } else if (uri.startsWith("/device/")) {
                 return handleDeviceRequest(session);
-            } else if (uri.startsWith("/webview/")) {
-                return handleWebviewRequest(session);
             } else if (uri.equals("/settings")) {
                 if (method.equals(Method.GET)) {
                     jsonResponse.put("success", true);
@@ -81,6 +78,10 @@ public class HttpServer extends NanoHTTPD {
                     JSONObject jsonObject = new JSONObject(postData);
 
                     mSettingsParser.setSettings(jsonObject);
+
+                    // Notify components of settings change (triggers MQTT reconnect, etc.)
+                    Intent settingsIntent = new Intent(INTENT_SETTINGS_CHANGED);
+                    LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(settingsIntent);
 
                     jsonResponse.put("success", true);
                     jsonResponse.put("settings", mSettingsParser.getSettings());
@@ -119,39 +120,6 @@ public class HttpServer extends NanoHTTPD {
         }
 
         return newFixedLengthResponse(Response.Status.NOT_FOUND, "application/json", jsonResponse.toString());
-    }
-
-    private Response handleWebviewRequest(IHTTPSession session) throws JSONException, ResponseException, IOException {
-        Method method = session.getMethod();
-        String uri = session.getUri();
-        JSONObject jsonResponse = new JSONObject();
-
-        switch (uri.replace("/webview/", "")) {
-            case "refresh":
-                if (method.equals(Method.GET)) {
-                    Intent intent = new Intent(INTENT_SETTINGS_CHANGED);
-                    LocalBroadcastManager.getInstance(ShellyElevateApplication.mApplicationContext).sendBroadcast(intent);
-                    jsonResponse.put("success", true);
-                }
-            case "inject":
-                if (method.equals(Method.POST)) {
-                    Map<String, String> files = new HashMap<>();
-                    session.parseBody(files);
-                    String postData = files.get("postData");
-                    assert postData != null;
-                    JSONObject jsonObject = new JSONObject(postData);
-
-                    String javascript = jsonObject.getString("javascript");
-
-                    Intent intent = new Intent(INTENT_WEBVIEW_INJECT_JAVASCRIPT);
-                    intent.putExtra("javascript", javascript);
-                    LocalBroadcastManager.getInstance(ShellyElevateApplication.mApplicationContext).sendBroadcast(intent);
-
-                    jsonResponse.put("success", true);
-                }
-        }
-
-        return newFixedLengthResponse(jsonResponse.getBoolean("success") ? Response.Status.OK : Response.Status.INTERNAL_ERROR, "application/json", jsonResponse.toString());
     }
 
     private Response handleMediaRequest(IHTTPSession session) throws JSONException, ResponseException, IOException {
@@ -336,18 +304,18 @@ public class HttpServer extends NanoHTTPD {
                 }
                 break;
             case "wake":
-                jsonResponse.put("success", false);
-                if (method.equals(Method.POST)) {
-                    mScreenSaverManager.stopScreenSaver();
-                    jsonResponse.put("success", true);
-                }
+                // Accept both GET and POST for convenience
+                Log.i("HttpServer", "Wake request received");
+                LocalBroadcastManager.getInstance(mApplicationContext)
+                        .sendBroadcast(new Intent(INTENT_SCREEN_SAVER_STOPPED));
+                jsonResponse.put("success", true);
                 break;
             case "sleep":
-                jsonResponse.put("success", false);
-                if (method.equals(Method.POST)) {
-                    mScreenSaverManager.startScreenSaver();
-                    jsonResponse.put("success", true);
-                }
+                // Accept both GET and POST for convenience
+                Log.i("HttpServer", "Sleep request received");
+                LocalBroadcastManager.getInstance(mApplicationContext)
+                        .sendBroadcast(new Intent(INTENT_SCREEN_SAVER_STARTED));
+                jsonResponse.put("success", true);
                 break;
             case "reboot":
                 jsonResponse.put("success", false);
@@ -364,6 +332,39 @@ public class HttpServer extends NanoHTTPD {
                     } else {
                         Toast.makeText(mApplicationContext, "Please wait %s seconds before rebooting".replace("%s", String.valueOf(20 - deltaTime)), Toast.LENGTH_LONG).show();
                     }
+                }
+                break;
+            case "launchApp":
+                if (method.equals(Method.POST)) {
+                    Map<String, String> files = new HashMap<>();
+                    session.parseBody(files);
+                    String postData = files.get("postData");
+                    if (postData != null) {
+                        JSONObject jsonObject = new JSONObject(postData);
+                        String packageName = jsonObject.optString("package", "io.homeassistant.companion.android");
+                        try {
+                            Intent launchIntent = mApplicationContext.getPackageManager().getLaunchIntentForPackage(packageName);
+                            if (launchIntent != null) {
+                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                                mApplicationContext.startActivity(launchIntent);
+                                jsonResponse.put("success", true);
+                                jsonResponse.put("package", packageName);
+                            } else {
+                                jsonResponse.put("success", false);
+                                jsonResponse.put("error", "App not installed: " + packageName);
+                            }
+                        } catch (Exception e) {
+                            jsonResponse.put("success", false);
+                            jsonResponse.put("error", "Failed to launch: " + e.getMessage());
+                        }
+                    } else {
+                        jsonResponse.put("success", false);
+                        jsonResponse.put("error", "Missing package parameter");
+                    }
+                } else {
+                    jsonResponse.put("success", false);
+                    jsonResponse.put("error", "Invalid request method");
                 }
                 break;
             default:
