@@ -390,10 +390,10 @@ public class MQTTServer {
             components.put(clientId + "_proximity", proximitySensorPayload);
         }
 
-        // buttons
+        // buttons (numbered 1-4 for user-friendliness)
         var buttons = DeviceModel.getReportedDevice().buttons;
         if (buttons > 0) {
-            for (int i = 0; i < buttons; i++) {
+            for (int i = 1; i <= buttons; i++) {
                 // Timestamp sensor (for "last pressed at")
                 JSONObject sensorPayload = new JSONObject();
                 sensorPayload.put("p", "sensor");

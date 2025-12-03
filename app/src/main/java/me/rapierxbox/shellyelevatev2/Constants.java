@@ -4,7 +4,6 @@ public class Constants {
     public static final String SHARED_PREFERENCES_NAME = "ShellyElevateV2";
 
     //Generic SP Keys
-    public static final String SP_DEVICE = "device";
     public static final String SP_LITE_MODE = "liteMode";
     public static final String SP_SETTINGS_EVER_SHOWN = "settingEverShown";
 

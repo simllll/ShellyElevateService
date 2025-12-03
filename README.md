@@ -157,10 +157,10 @@ All topics are prefixed with `shellyelevatev2/<client-id>/`.
 ### Events (for automations)
 | Topic | Payload | Description |
 |-------|---------|-------------|
-| `button_event/0` | `{"event_type": "press"}` | Button 0 pressed |
 | `button_event/1` | `{"event_type": "press"}` | Button 1 pressed |
 | `button_event/2` | `{"event_type": "press"}` | Button 2 pressed |
 | `button_event/3` | `{"event_type": "press"}` | Button 3 pressed |
+| `button_event/4` | `{"event_type": "press"}` | Button 4 pressed |
 
 ### Commands (subscribe)
 | Topic | Payload | Description |
@@ -184,27 +184,109 @@ ShellyElevate publishes MQTT discovery config to `homeassistant/device/<client-i
 - Button events (for automations)
 - Sleep/Wake/Reboot buttons
 
+## Home Assistant Automation Example
+
+Create automations that trigger when hardware buttons are pressed:
+
+```yaml
+automation:
+  - alias: "Wall Display Button 1 - Toggle Kitchen Light"
+    trigger:
+      - platform: state
+        entity_id: event.shelly_wall_display_button_1
+    action:
+      - service: light.toggle
+        target:
+          entity_id: light.kitchen
+
+  - alias: "Wall Display Button 2 - Toggle Living Room"
+    trigger:
+      - platform: state
+        entity_id: event.shelly_wall_display_button_2
+    action:
+      - service: light.toggle
+        target:
+          entity_id: light.living_room
+```
+
+Or handle all buttons in one automation:
+
+```yaml
+automation:
+  - alias: "Handle All Wall Display Buttons"
+    trigger:
+      - platform: state
+        entity_id:
+          - event.shelly_wall_display_button_1
+          - event.shelly_wall_display_button_2
+          - event.shelly_wall_display_button_3
+          - event.shelly_wall_display_button_4
+    action:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ trigger.entity_id.endswith('_1') }}"
+            sequence:
+              - service: light.toggle
+                target:
+                  entity_id: light.kitchen
+          - conditions:
+              - condition: template
+                value_template: "{{ trigger.entity_id.endswith('_2') }}"
+            sequence:
+              - service: light.toggle
+                target:
+                  entity_id: light.living_room
+          # Add more buttons as needed
+```
+
 ## Settings Reference
+
+All settings can be configured via `POST /settings` with a JSON body.
+
+### MQTT Settings
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `mqttEnabled` | boolean | `false` | Enable MQTT |
+| `mqttEnabled` | boolean | `false` | Enable MQTT connection |
 | `mqttBroker` | string | `""` | MQTT broker URL (e.g., `tcp://192.168.1.100`) |
-| `mqttPort` | int | `1883` | MQTT port |
+| `mqttPort` | int | `1883` | MQTT broker port |
 | `mqttUsername` | string | `""` | MQTT username |
 | `mqttPassword` | string | `""` | MQTT password |
-| `mqttDeviceId` | string | auto | MQTT client ID |
-| `screenSaver` | boolean | `true` | Enable screen dimming |
-| `screenSaverDelay` | int | `45` | Seconds before dimming |
-| `screenSaverMinBrightness` | int | `10` | Minimum brightness when dimmed |
-| `wakeOnProximity` | boolean | `false` | Wake screen on proximity |
-| `automaticBrightness` | boolean | `true` | Auto-adjust brightness based on light |
-| `minBrightness` | int | `48` | Minimum auto brightness |
+| `mqttDeviceId` | string | auto-generated | MQTT client ID (used in topics) |
+
+### Screen & Brightness Settings
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `automaticBrightness` | boolean | `true` | Auto-adjust brightness based on ambient light |
+| `brightness` | int | `255` | Manual brightness level (0-255, used when auto is off) |
+| `minBrightness` | int | `48` | Minimum brightness for auto-brightness |
+
+### Screen Dimming (Screensaver) Settings
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `screenSaver` | boolean | `true` | Enable screen dimming on idle |
+| `screenSaverDelay` | int | `45` | Seconds of inactivity before dimming |
+| `screenSaverMinBrightness` | int | `10` | Brightness level when dimmed (0-255) |
+| `wakeOnProximity` | boolean | `false` | Wake screen when proximity sensor triggered |
+
+### App Watchdog Settings
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
 | `watchdogEnabled` | boolean | `false` | Enable app watchdog |
-| `watchdogPackage` | string | `io.homeassistant.companion.android` | App to watch |
-| `watchdogInterval` | int | `10` | Watchdog check interval (seconds) |
-| `httpServer` | boolean | `true` | Enable HTTP server |
-| `debugKeys` | boolean | `false` | Log all key events to MQTT |
+| `watchdogPackage` | string | `io.homeassistant.companion.android` | Package name of app to keep running |
+| `watchdogInterval` | int | `10` | Check interval in seconds |
+
+### Other Settings
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `httpServer` | boolean | `true` | Enable HTTP API server on port 8080 |
+| `mediaEnabled` | boolean | `true` | Enable media/audio playback |
+| `debugKeys` | boolean | `false` | Publish unknown key codes to MQTT for debugging |
 
 ## Building
 
