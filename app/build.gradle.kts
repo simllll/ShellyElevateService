@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "me.rapierxbox.shellyelevatev2"
+    namespace = "com.stretter.shellyelevateservice"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "me.rapierxbox.shellyelevatev2"
+        applicationId = "com.stretter.shellyelevateservice"
         minSdk = 24
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 24

@@ -1,11 +1,11 @@
-package me.rapierxbox.shellyelevatev2
+package com.stretter.shellyelevateservice
 
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import me.rapierxbox.shellyelevatev2.helper.ServiceHelper
+import com.stretter.shellyelevateservice.helper.ServiceHelper
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -23,7 +23,7 @@ class CrashHandler(private val context: Context) : Thread.UncaughtExceptionHandl
             Log.e("CrashHandler", "App crashed", throwable)
 
             // Restart service in 2 seconds
-            val restartIntent = Intent(context, ShellyDisplayService::class.java)
+            val restartIntent = Intent(context, ShellyElevateService::class.java)
             val pendingIntent = PendingIntent.getForegroundService(
                 context,
                 0,

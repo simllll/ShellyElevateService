@@ -1,4 +1,4 @@
-package me.rapierxbox.shellyelevatev2;
+package com.stretter.shellyelevateservice;
 
 import android.app.ActivityManager;
 import android.app.Notification;
@@ -26,13 +26,13 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import fi.iki.elonen.NanoHTTPD;
-import me.rapierxbox.shellyelevatev2.helper.DeviceHelper;
-import me.rapierxbox.shellyelevatev2.helper.DeviceSensorManager;
-import me.rapierxbox.shellyelevatev2.helper.MediaHelper;
-import me.rapierxbox.shellyelevatev2.mqtt.MQTTServer;
+import com.stretter.shellyelevateservice.helper.DeviceHelper;
+import com.stretter.shellyelevateservice.helper.DeviceSensorManager;
+import com.stretter.shellyelevateservice.helper.MediaHelper;
+import com.stretter.shellyelevateservice.mqtt.MQTTServer;
 
-import static me.rapierxbox.shellyelevatev2.Constants.*;
-import static me.rapierxbox.shellyelevatev2.Constants.SP_DEBUG_KEYS;
+import static com.stretter.shellyelevateservice.Constants.*;
+import static com.stretter.shellyelevateservice.Constants.SP_DEBUG_KEYS;
 
 /**
  * Background service that provides:
@@ -44,10 +44,10 @@ import static me.rapierxbox.shellyelevatev2.Constants.SP_DEBUG_KEYS;
  *
  * This service can run independently without MainActivity (lite mode).
  */
-public class ShellyDisplayService extends Service {
+public class ShellyElevateService extends Service {
 
-    private static final String TAG = "ShellyDisplayService";
-    private static final String CHANNEL_ID = "shelly_display_channel";
+    private static final String TAG = "ShellyElevateService";
+    private static final String CHANNEL_ID = "shelly_elevate_channel";
     private static final int NOTIFICATION_ID = 1;
 
     // Core components
@@ -110,7 +110,7 @@ public class ShellyDisplayService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.i(TAG, "ShellyDisplayService starting...");
+        Log.i(TAG, "ShellyElevateService starting...");
 
         createNotificationChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
@@ -124,7 +124,7 @@ public class ShellyDisplayService extends Service {
         startHttpServer();
         startAppWatchdog();
 
-        Log.i(TAG, "ShellyDisplayService started successfully");
+        Log.i(TAG, "ShellyElevateService started successfully");
     }
 
     private void initializeDefaultSettings() {
@@ -150,7 +150,7 @@ public class ShellyDisplayService extends Service {
 
         // Watchdog
         if (!sharedPreferences.contains(SP_WATCHDOG_ENABLED)) editor.putBoolean(SP_WATCHDOG_ENABLED, false);
-        if (!sharedPreferences.contains(SP_WATCHDOG_PACKAGE)) editor.putString(SP_WATCHDOG_PACKAGE, "io.homeassistant.companion.android");
+        if (!sharedPreferences.contains(SP_WATCHDOG_PACKAGE)) editor.putString(SP_WATCHDOG_PACKAGE, "io.homeassistant.companion.android.minimal");
         if (!sharedPreferences.contains(SP_WATCHDOG_INTERVAL)) editor.putInt(SP_WATCHDOG_INTERVAL, 10);
 
         // Other
@@ -258,7 +258,7 @@ public class ShellyDisplayService extends Service {
 
     // === App Watchdog ===
 
-    private static final String DEFAULT_WATCHDOG_PACKAGE = "io.homeassistant.companion.android";
+    private static final String DEFAULT_WATCHDOG_PACKAGE = "io.homeassistant.companion.android.minimal";
     private static final int DEFAULT_WATCHDOG_INTERVAL = 10; // seconds
 
     private void startAppWatchdog() {
@@ -508,7 +508,7 @@ public class ShellyDisplayService extends Service {
 
     @Override
     public void onDestroy() {
-        Log.i(TAG, "ShellyDisplayService stopping...");
+        Log.i(TAG, "ShellyElevateService stopping...");
 
         // Unregister receivers
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
@@ -538,7 +538,7 @@ public class ShellyDisplayService extends Service {
             mediaHelper.onDestroy();
         }
 
-        Log.i(TAG, "ShellyDisplayService stopped");
+        Log.i(TAG, "ShellyElevateService stopped");
         super.onDestroy();
     }
 

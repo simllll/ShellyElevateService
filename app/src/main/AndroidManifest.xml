@@ -35,7 +35,7 @@
         </receiver>
 
         <service
-            android:name=".ShellyDisplayService"
+            android:name=".ShellyElevateService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />

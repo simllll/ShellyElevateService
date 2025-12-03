@@ -1,4 +1,4 @@
-# ShellyElevate
+# ShellyElevateService
 
 > [!CAUTION]
 > All content in this repository is provided "as is" and may render your device unusable. Always exercise caution when working with your device. No warranty or guarantee is provided.
@@ -43,18 +43,46 @@ No jailbreak required! Just enable developer settings:
 Connect a USB cable to the display and install the APK:
 
 ```bash
-# Install ShellyElevate
-adb install ./shellyelevatev2.apk
+# Install ShellyElevate Service
+adb install ./shellyelevateservice.apk
 
-# Install Home Assistant Companion app
-adb install ./home-assistant.apk
+# Install Home Assistant Companion app (minimal version)
+adb install ./home-assistant-minimal.apk
 ```
 
-### 3. Configure via HTTP API
+### 3. Grant Permissions
+
+The service requires the **Write Settings** permission to control screen brightness. This must be granted manually:
+
+```bash
+adb shell appops set com.stretter.shellyelevateservice WRITE_SETTINGS allow
+```
+
+Optionally, whitelist the app from battery optimization to prevent Android from killing the service:
+
+```bash
+adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
+```
+
+### 4. Start the Service
+
+Start the service manually (it will auto-start on subsequent boots):
+
+```bash
+adb shell am start-foreground-service com.stretter.shellyelevateservice/.ShellyElevateService
+```
+
+To verify it's running:
+
+```bash
+adb shell dumpsys activity services com.stretter.shellyelevateservice
+```
+
+### 5. Configure via HTTP API
 
 Once installed, configure the service via HTTP calls (see Configuration section below).
 
-### 4. Reboot
+### 6. Reboot (Optional)
 
 ```bash
 adb reboot
@@ -89,7 +117,7 @@ curl -X POST http://<device-ip>:8080/settings \
   -H "Content-Type: application/json" \
   -d '{
     "watchdogEnabled": true,
-    "watchdogPackage": "io.homeassistant.companion.android",
+    "watchdogPackage": "io.homeassistant.companion.android.minimal",
     "watchdogInterval": 10
   }'
 ```
@@ -277,7 +305,7 @@ All settings can be configured via `POST /settings` with a JSON body.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `watchdogEnabled` | boolean | `false` | Enable app watchdog |
-| `watchdogPackage` | string | `io.homeassistant.companion.android` | Package name of app to keep running |
+| `watchdogPackage` | string | `io.homeassistant.companion.android.minimal` | Package name of app to keep running |
 | `watchdogInterval` | int | `10` | Check interval in seconds |
 
 ### Other Settings

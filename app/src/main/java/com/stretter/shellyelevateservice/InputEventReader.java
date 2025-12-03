@@ -1,4 +1,4 @@
-package me.rapierxbox.shellyelevatev2;
+package com.stretter.shellyelevateservice;
 
 import android.util.Log;
 
