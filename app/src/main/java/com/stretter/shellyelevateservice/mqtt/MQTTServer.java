@@ -286,15 +286,14 @@ public class MQTTServer {
         publishInternal(parseTopic(MQTT_TOPIC_SLEEPING_BINARY_SENSOR), state ? "ON" : "OFF", 1, false);
     }
 
-    public void publishButton(int number) {
-        // Publish timestamp sensor (for "last pressed at")
-        long epochMillis = System.currentTimeMillis();
-        String timestampPayload = "{\"last_update\": " + epochMillis + "}";
-        publishInternal(parseTopic(MQTT_TOPIC_BUTTON_STATE) + "/" + number, timestampPayload, 1, false);
-
-        // Publish event (for automations)
-        String eventPayload = "{\"event_type\": \"press\"}";
-        publishInternal(parseTopic(MQTT_TOPIC_BUTTON_EVENT) + "/" + number, eventPayload, 1, false);
+    /**
+     * Publish a button event with specific event type (single, double, long).
+     * This is the preferred method for button events as it supports all action types.
+     */
+    public void publishButtonEvent(int buttonNumber, String eventType) {
+        String eventPayload = "{\"event_type\": \"" + eventType + "\"}";
+        publishInternal(parseTopic(MQTT_TOPIC_BUTTON_EVENT) + "/" + buttonNumber, eventPayload, 1, false);
+        Log.i("MQTT", "Published button " + buttonNumber + " event: " + eventType);
     }
 
     public void publishUnknownKey(int keyCode, boolean pressed) {
@@ -382,32 +381,22 @@ public class MQTTServer {
         }
 
         // buttons (numbered 1-4 for user-friendliness)
+        // Using device triggers (events) with single/double/long press support
         var buttons = DeviceModel.getReportedDevice().buttons;
         if (buttons > 0) {
             for (int i = 1; i <= buttons; i++) {
-                // Timestamp sensor (for "last pressed at")
-                JSONObject sensorPayload = new JSONObject();
-                sensorPayload.put("p", "sensor");
-                sensorPayload.put("name", "Button " + i + " Last Press");
-                sensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_BUTTON_STATE) + "/" + i);
-                sensorPayload.put("unique_id", clientId + "_button_" + i + "_lastpress");
-                sensorPayload.put("device_class", "timestamp");
-
-                // value_template to convert Unix millis to ISO 8601
-                sensorPayload.put(
-                        "value_template",
-                        "{{ (value_json.last_update / 1000) | timestamp_custom('%Y-%m-%dT%H:%M:%S%z', true) }}"
-                );
-
-                components.put(clientId + "_button_" + i + "_lastpress", sensorPayload);
-
-                // Event entity (for automations)
+                // Event entity for automations - supports single, double, and long press
                 JSONObject eventPayload = new JSONObject();
                 eventPayload.put("p", "event");
                 eventPayload.put("name", "Button " + i);
                 eventPayload.put("state_topic", parseTopic(MQTT_TOPIC_BUTTON_EVENT) + "/" + i);
                 eventPayload.put("device_class", "button");
-                eventPayload.put("event_types", new JSONArray().put("press"));
+                // Register all supported event types
+                JSONArray eventTypes = new JSONArray();
+                eventTypes.put("single");
+                eventTypes.put("double");
+                eventTypes.put("long");
+                eventPayload.put("event_types", eventTypes);
                 eventPayload.put("unique_id", clientId + "_button_" + i + "_event");
                 components.put(clientId + "_button_" + i + "_event", eventPayload);
             }

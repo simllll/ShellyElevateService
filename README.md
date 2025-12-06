@@ -190,7 +190,7 @@ curl -X POST http://<device-ip>:8080/settings \
 
 ## MQTT Topics
 
-All topics are prefixed with `shellyelevatev2/<client-id>/`.
+All topics are prefixed with `shellyelevateservice/<client-id>/`.
 
 ### Sensors (published automatically)
 | Topic | Description |
@@ -206,10 +206,17 @@ All topics are prefixed with `shellyelevatev2/<client-id>/`.
 ### Events (for automations)
 | Topic | Payload | Description |
 |-------|---------|-------------|
-| `button_event/1` | `{"event_type": "press"}` | Button 1 pressed |
-| `button_event/2` | `{"event_type": "press"}` | Button 2 pressed |
-| `button_event/3` | `{"event_type": "press"}` | Button 3 pressed |
-| `button_event/4` | `{"event_type": "press"}` | Button 4 pressed |
+| `button_event/1` | `{"event_type": "single"}` | Button 1 single press |
+| `button_event/1` | `{"event_type": "double"}` | Button 1 double press |
+| `button_event/1` | `{"event_type": "long"}` | Button 1 long press (held 500ms+) |
+| `button_event/2` | `{"event_type": "..."}` | Button 2 events |
+| `button_event/3` | `{"event_type": "..."}` | Button 3 events |
+| `button_event/4` | `{"event_type": "..."}` | Button 4 events |
+
+**Event types:**
+- `single` - Quick press and release
+- `double` - Two presses within 300ms
+- `long` - Button held for 500ms or more
 
 ### Commands (subscribe)
 | Topic | Payload | Description |
@@ -233,60 +240,89 @@ ShellyElevate publishes MQTT discovery config to `homeassistant/device/<client-i
 - Button events (for automations)
 - Sleep/Wake/Reboot buttons
 
-## Home Assistant Automation Example
+## Home Assistant Automation Examples
 
-Create automations that trigger when hardware buttons are pressed:
+### Single Press - Toggle Light
 
 ```yaml
 automation:
-  - alias: "Wall Display Button 1 - Toggle Kitchen Light"
+  - alias: "Button 1 Single Press - Toggle Kitchen Light"
     trigger:
       - platform: state
         entity_id: event.shelly_wall_display_button_1
+        attribute: event_type
+        to: "single"
     action:
       - service: light.toggle
         target:
           entity_id: light.kitchen
-
-  - alias: "Wall Display Button 2 - Toggle Living Room"
-    trigger:
-      - platform: state
-        entity_id: event.shelly_wall_display_button_2
-    action:
-      - service: light.toggle
-        target:
-          entity_id: light.living_room
 ```
 
-Or handle all buttons in one automation:
+### Double Press - Set Scene
 
 ```yaml
 automation:
-  - alias: "Handle All Wall Display Buttons"
+  - alias: "Button 1 Double Press - Movie Mode"
     trigger:
       - platform: state
-        entity_id:
-          - event.shelly_wall_display_button_1
-          - event.shelly_wall_display_button_2
-          - event.shelly_wall_display_button_3
-          - event.shelly_wall_display_button_4
+        entity_id: event.shelly_wall_display_button_1
+        attribute: event_type
+        to: "double"
+    action:
+      - service: scene.turn_on
+        target:
+          entity_id: scene.movie_mode
+```
+
+### Long Press - Turn Off All Lights
+
+```yaml
+automation:
+  - alias: "Button 1 Long Press - All Lights Off"
+    trigger:
+      - platform: state
+        entity_id: event.shelly_wall_display_button_1
+        attribute: event_type
+        to: "long"
+    action:
+      - service: light.turn_off
+        target:
+          entity_id: all
+```
+
+### Handle Multiple Event Types
+
+```yaml
+automation:
+  - alias: "Wall Display Button 1 - Multi-Action"
+    trigger:
+      - platform: state
+        entity_id: event.shelly_wall_display_button_1
     action:
       - choose:
           - conditions:
               - condition: template
-                value_template: "{{ trigger.entity_id.endswith('_1') }}"
+                value_template: "{{ trigger.to_state.attributes.event_type == 'single' }}"
             sequence:
               - service: light.toggle
                 target:
                   entity_id: light.kitchen
           - conditions:
               - condition: template
-                value_template: "{{ trigger.entity_id.endswith('_2') }}"
+                value_template: "{{ trigger.to_state.attributes.event_type == 'double' }}"
             sequence:
-              - service: light.toggle
+              - service: light.turn_on
                 target:
-                  entity_id: light.living_room
-          # Add more buttons as needed
+                  entity_id: light.kitchen
+                data:
+                  brightness_pct: 100
+          - conditions:
+              - condition: template
+                value_template: "{{ trigger.to_state.attributes.event_type == 'long' }}"
+            sequence:
+              - service: light.turn_off
+                target:
+                  entity_id: light.kitchen
 ```
 
 ## Settings Reference

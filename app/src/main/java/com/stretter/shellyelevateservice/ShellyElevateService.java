@@ -58,6 +58,7 @@ public class ShellyElevateService extends Service {
     private HttpServer httpServer;
     private MediaHelper mediaHelper;
     private InputEventReader inputEventReader;
+    private ButtonStateTracker buttonStateTracker;
 
     // Idle/dim management
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
@@ -178,8 +179,11 @@ public class ShellyElevateService extends Service {
         // HTTP server
         httpServer = new HttpServer();
 
+        // Button state tracker for single/double/long press detection
+        buttonStateTracker = new ButtonStateTracker(this::onButtonAction);
+
         // Input event reader for hardware buttons
-        inputEventReader = new InputEventReader(this::onButtonEvent);
+        inputEventReader = new InputEventReader(this::onRawButtonEvent);
         inputEventReader.start();
 
         // Store references for global access (needed by HttpServer, etc.)
@@ -438,11 +442,15 @@ public class ShellyElevateService extends Service {
         mainHandler.post(() -> deviceHelper.setScreenBrightness(brightness));
     }
 
-    private void onButtonEvent(int keyCode, boolean pressed) {
+    /**
+     * Called by InputEventReader for raw key press/release events.
+     * Routes known buttons to ButtonStateTracker for single/double/long detection.
+     */
+    private void onRawButtonEvent(int keyCode, boolean pressed) {
         // Log key events for debugging (controlled by debug flag)
         boolean debugKeys = sharedPreferences.getBoolean(SP_DEBUG_KEYS, false);
         if (debugKeys) {
-            Log.i(TAG, "Button event: keyCode=" + keyCode + ", pressed=" + pressed);
+            Log.i(TAG, "Raw button event: keyCode=" + keyCode + ", pressed=" + pressed);
         }
 
         // Any button press wakes the screen and resets idle timer
@@ -453,37 +461,40 @@ public class ShellyElevateService extends Service {
             }
         }
 
-        // Handle hardware buttons (key codes 59-62 for Shelly Wall Display XL)
-        boolean handled = false;
-        switch (keyCode) {
-            case 59: // Button 1
-                if (pressed) publishButton(1);
-                handled = true;
-                break;
-            case 60: // Button 2
-                if (pressed) publishButton(2);
-                handled = true;
-                break;
-            case 61: // Button 3
-                if (pressed) publishButton(3);
-                handled = true;
-                break;
-            case 62: // Button 4
-                if (pressed) publishButton(4);
-                handled = true;
-                break;
-        }
-
-        // Publish unknown keys to MQTT only when debug mode is enabled
-        if (!handled && debugKeys && mqttServer != null && mqttServer.shouldSend()) {
+        // Map hardware key codes 59-62 to button numbers 1-4
+        int buttonNumber = keyCodeToButtonNumber(keyCode);
+        if (buttonNumber > 0) {
+            // Route to ButtonStateTracker for single/double/long detection
+            buttonStateTracker.onButtonEvent(buttonNumber, pressed);
+        } else if (debugKeys && mqttServer != null && mqttServer.shouldSend()) {
+            // Publish unknown keys to MQTT only when debug mode is enabled
             Log.w(TAG, "Unknown key code: " + keyCode + ", publishing to MQTT");
             mqttServer.publishUnknownKey(keyCode, pressed);
         }
     }
 
-    private void publishButton(int buttonNum) {
+    /**
+     * Maps hardware key codes to button numbers.
+     * @return button number (1-4) or 0 if unknown
+     */
+    private int keyCodeToButtonNumber(int keyCode) {
+        switch (keyCode) {
+            case 59: return 1;
+            case 60: return 2;
+            case 61: return 3;
+            case 62: return 4;
+            default: return 0;
+        }
+    }
+
+    /**
+     * Called by ButtonStateTracker when a button action is detected.
+     * Publishes the event to MQTT.
+     */
+    private void onButtonAction(int buttonNumber, ButtonStateTracker.EventType eventType) {
+        Log.i(TAG, "Button " + buttonNumber + " action: " + eventType.getValue());
         if (mqttServer != null && mqttServer.shouldSend()) {
-            mqttServer.publishButton(buttonNum);
+            mqttServer.publishButtonEvent(buttonNumber, eventType.getValue());
         }
     }
 
@@ -519,6 +530,11 @@ public class ShellyElevateService extends Service {
         // Stop input reader
         if (inputEventReader != null) {
             inputEventReader.stop();
+        }
+
+        // Cleanup button state tracker
+        if (buttonStateTracker != null) {
+            buttonStateTracker.destroy();
         }
 
         // Shutdown scheduler

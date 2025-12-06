@@ -61,7 +61,6 @@ public class Constants {
     public static final String MQTT_TOPIC_RELAY_COMMAND = "shellyelevateservice/%s/relay_command";
     public static final String MQTT_TOPIC_UPDATE = "shellyelevateservice/%s/update";
     public static final String MQTT_TOPIC_HELLO = "shellyelevateservice/%s/hello";
-    public static final String MQTT_TOPIC_BUTTON_STATE = "shellyelevateservice/%s/button";
     public static final String MQTT_TOPIC_BUTTON_EVENT = "shellyelevateservice/%s/button_event";
     public static final String MQTT_TOPIC_SLEEP_BUTTON = "shellyelevateservice/%s/sleep";
     public static final String MQTT_TOPIC_WAKE_BUTTON = "shellyelevateservice/%s/wake";
