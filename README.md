@@ -225,6 +225,7 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 | `sleep` | any | Dim screen |
 | `wake` | any | Wake screen |
 | `reboot` | any | Reboot device |
+| `restart_app` | any | Force kill and restart the watchdog app |
 
 ## Home Assistant Auto-Discovery
 
@@ -238,7 +239,7 @@ ShellyElevate publishes MQTT discovery config to `homeassistant/device/<client-i
 - Sleeping binary sensor
 - Relay switch(es)
 - Button events (for automations)
-- Sleep/Wake/Reboot buttons
+- Sleep/Wake/Reboot/Restart App buttons
 
 ## Home Assistant Automation Examples
 

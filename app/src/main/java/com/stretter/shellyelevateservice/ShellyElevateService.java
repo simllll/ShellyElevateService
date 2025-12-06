@@ -108,6 +108,17 @@ public class ShellyElevateService extends Service {
         }
     };
 
+    // Restart app receiver (from MQTT)
+    private final BroadcastReceiver restartAppReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (INTENT_RESTART_APP.equals(intent.getAction())) {
+                Log.i(TAG, "Restart app command received");
+                restartWatchdogApp();
+            }
+        }
+    };
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -206,6 +217,9 @@ public class ShellyElevateService extends Service {
         wakeSleepFilter.addAction(INTENT_SCREEN_SAVER_STARTED);
         wakeSleepFilter.addAction(INTENT_SCREEN_SAVER_STOPPED);
         lbm.registerReceiver(wakeSleepReceiver, wakeSleepFilter);
+
+        // Restart app from MQTT
+        lbm.registerReceiver(restartAppReceiver, new IntentFilter(INTENT_RESTART_APP));
     }
 
     private void startIdleChecker() {
@@ -338,6 +352,29 @@ public class ShellyElevateService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "Failed to launch app: " + packageName, e);
         }
+    }
+
+    /**
+     * Force kills and restarts the watchdog app.
+     * Called via MQTT restart_app command.
+     */
+    private void restartWatchdogApp() {
+        String packageName = sharedPreferences.getString(SP_WATCHDOG_PACKAGE, DEFAULT_WATCHDOG_PACKAGE);
+        Log.i(TAG, "Restarting watchdog app: " + packageName);
+
+        // Force stop the app using am force-stop command
+        try {
+            Runtime.getRuntime().exec("am force-stop " + packageName);
+            Log.i(TAG, "Force stopped app: " + packageName);
+        } catch (IOException e) {
+            Log.w(TAG, "Could not force stop app: " + e.getMessage());
+        }
+
+        // Wait a moment then relaunch
+        mainHandler.postDelayed(() -> {
+            Log.i(TAG, "Relaunching app: " + packageName);
+            launchApp(packageName);
+        }, 500);
     }
 
     // === Screen Dim/Wake ===
@@ -526,6 +563,7 @@ public class ShellyElevateService extends Service {
         lbm.unregisterReceiver(proximityReceiver);
         lbm.unregisterReceiver(lightReceiver);
         lbm.unregisterReceiver(wakeSleepReceiver);
+        lbm.unregisterReceiver(restartAppReceiver);
 
         // Stop input reader
         if (inputEventReader != null) {

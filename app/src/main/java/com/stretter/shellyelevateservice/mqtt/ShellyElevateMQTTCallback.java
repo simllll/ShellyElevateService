@@ -69,6 +69,13 @@ public class ShellyElevateMQTTCallback implements MqttCallback {
                 } else {
                     Toast.makeText(mApplicationContext, "Please wait %s seconds before rebooting".replace("%s",String.valueOf(20-deltaTime) ), Toast.LENGTH_LONG).show();
                 }
+                break;
+            case MQTT_TOPIC_RESTART_APP_BUTTON:
+                // Broadcast to ShellyElevateService to kill and restart the watchdog app
+                Log.i("MQTT", "Restart app command received");
+                Intent restartIntent = new Intent(INTENT_RESTART_APP);
+                LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(restartIntent);
+                break;
         }
     }
 

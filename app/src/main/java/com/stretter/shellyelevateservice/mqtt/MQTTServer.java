@@ -166,7 +166,7 @@ public class MQTTServer {
             if (mMqttClient != null && mMqttClient.isConnected()) {
                 try {
                     // Subscriptions
-                    mMqttClient.subscribe("shellyelevatev2/#", 1);
+                    mMqttClient.subscribe("shellyelevateservice/" + clientId + "/#", 1);
                     mMqttClient.subscribe(MQTT_TOPIC_HOME_ASSISTANT_STATUS, 1);
 
                     publishStatus();
@@ -436,6 +436,14 @@ public class MQTTServer {
         rebootButtonPayload.put("device_class", "restart");
         rebootButtonPayload.put("unique_id", clientId + "_reboot");
         components.put(clientId + "_reboot", rebootButtonPayload);
+
+        JSONObject restartAppButtonPayload = new JSONObject();
+        restartAppButtonPayload.put("p", "button");
+        restartAppButtonPayload.put("name", "Restart App");
+        restartAppButtonPayload.put("command_topic", parseTopic(MQTT_TOPIC_RESTART_APP_BUTTON));
+        restartAppButtonPayload.put("device_class", "restart");
+        restartAppButtonPayload.put("unique_id", clientId + "_restart_app");
+        components.put(clientId + "_restart_app", restartAppButtonPayload);
 
         JSONObject sleepingBinarySensorPayload = new JSONObject();
         sleepingBinarySensorPayload.put("p", "binary_sensor");

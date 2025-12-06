@@ -65,6 +65,10 @@ public class Constants {
     public static final String MQTT_TOPIC_SLEEP_BUTTON = "shellyelevateservice/%s/sleep";
     public static final String MQTT_TOPIC_WAKE_BUTTON = "shellyelevateservice/%s/wake";
     public static final String MQTT_TOPIC_REBOOT_BUTTON = "shellyelevateservice/%s/reboot";
+    public static final String MQTT_TOPIC_RESTART_APP_BUTTON = "shellyelevateservice/%s/restart_app";
+
+    //Restart App Intent
+    public static final String INTENT_RESTART_APP = "com.stretter.shellyelevateservice.RESTART_APP";
     public static final String MQTT_TOPIC_SLEEPING_BINARY_SENSOR = "shellyelevateservice/%s/sleeping";
     public static final String MQTT_TOPIC_HOME_ASSISTANT_STATUS = "homeassistant/status";
     public static final String MQTT_TOPIC_UNKNOWN_KEY = "shellyelevateservice/%s/unknown_key";
