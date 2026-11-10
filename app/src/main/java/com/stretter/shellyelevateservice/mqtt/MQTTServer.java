@@ -356,19 +356,29 @@ public class MQTTServer {
 
     private void publishCurrentStates() {
         DeviceModel device = DeviceModel.getReportedDevice();
-        publishTempAndHum();
+        // Each state on its own: one unreadable sensor must not block all the others
+        safely("temp/hum", this::publishTempAndHum);
         for (int num = 0; num < device.inputs; num++) {
-            publishRelay(num, mDeviceHelper.getRelay(num));
+            final int relay = num;
+            safely("relay " + relay, () -> publishRelay(relay, mDeviceHelper.getRelay(relay)));
         }
-        publishLux(mDeviceSensorManager.getLastMeasuredLux());
-        forcePublishScreenBrightness(mDeviceHelper.getScreenBrightness());
-        publishAutoBrightness();
+        safely("lux", () -> publishLux(mDeviceSensorManager.getLastMeasuredLux()));
+        safely("brightness", () -> forcePublishScreenBrightness(mDeviceHelper.getScreenBrightness()));
+        safely("auto brightness", this::publishAutoBrightness);
         if (device.hasProximitySensor) {
-            publishProximity(mDeviceSensorManager.getLastMeasuredDistance());
+            safely("proximity", () -> publishProximity(mDeviceSensorManager.getLastMeasuredDistance()));
         }
-        publishSleeping(sleeping);
+        safely("sleeping", () -> publishSleeping(sleeping));
         Boolean lastPresence = presence;
-        if (lastPresence != null) publishPresence(lastPresence);
+        if (lastPresence != null) safely("presence", () -> publishPresence(lastPresence));
+    }
+
+    private static void safely(String what, Runnable publish) {
+        try {
+            publish.run();
+        } catch (Exception e) {
+            Log.e("MQTT", "Publishing " + what + " failed", e);
+        }
     }
 
     /**

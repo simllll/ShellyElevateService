@@ -124,7 +124,9 @@ public class DeviceHelper {
         if (num < 0 || num >= possibleRelayFiles.length) return false;
 
         for (String relayFile : possibleRelayFiles[num]) {
-            relayState |= readFileContent(relayFile).contains("1");
+            // readFileContent returns null when the node does not exist on this model
+            String content = readFileContent(relayFile);
+            relayState |= content != null && content.contains("1");
         }
 
         return relayState;
