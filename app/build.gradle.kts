@@ -21,8 +21,25 @@ android {
         }
     }
 
+    // Release signing comes from the environment (GitHub Actions secrets). Without it, the
+    // release APK stays unsigned, so forks and local builds keep working.
+    val signingKeystore = System.getenv("SIGNING_KEYSTORE_FILE")
+    signingConfigs {
+        if (signingKeystore != null) {
+            create("release") {
+                storeFile = file(signingKeystore)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (signingKeystore != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
