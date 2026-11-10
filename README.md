@@ -29,7 +29,8 @@ However, switching to a third-party app means you lose access to the great hardw
 | **App Watchdog** | Automatically restart Home Assistant app if it crashes or closes |
 | **Relay Control** | Control the built-in relays via MQTT or HTTP |
 | **Sensor Publishing** | Temperature, humidity, light (lux), proximity, screen brightness |
-| **HTTP API** | RESTful API for configuration and control |
+| **HTTP API** | RESTful API for configuration and control, optional bearer token |
+| **Presence** | Wide-range presence sensor (XL) as occupancy binary sensor, optional wake on approach |
 
 ## Installation
 
@@ -70,7 +71,7 @@ adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
 
 ### 4. Start the Service
 
-Start the service manually (it will auto-start on subsequent boots):
+Start the service manually (it will auto-start on subsequent boots and after app updates):
 
 ```bash
 adb shell am start-foreground-service com.stretter.shellyelevateservice/.ShellyElevateService
@@ -82,11 +83,31 @@ To verify it's running:
 adb shell dumpsys activity services com.stretter.shellyelevateservice
 ```
 
-### 5. Configure via HTTP API
+### 5. Set an HTTP API token
+
+The HTTP API on port 8080 is reachable by everyone on your network. Settings that redirect the device
+(`mqttBroker`, `mqttPort`, `mqttUsername`, `mqttDeviceId`, `watchdogPackage`) can **only** be changed
+over HTTP when an API token is set. The token itself can only be set via adb:
+
+```bash
+adb shell am broadcast -n com.stretter.shellyelevateservice/.ApiTokenReceiver \
+  -a com.stretter.shellyelevateservice.SET_API_TOKEN --es token 'choose-a-long-random-token'
+```
+
+(To remove the token again: same command with `--es token ''`.) The receiver is protected by
+`android.permission.DUMP`, which only the adb shell holds, so other apps on the display cannot set it.
+
+Once a token is set, **every** HTTP request must send it:
+
+```bash
+curl -H "Authorization: Bearer choose-a-long-random-token" http://<device-ip>:8080/settings
+```
+
+### 6. Configure via HTTP API
 
 Once installed, configure the service via HTTP calls (see Configuration section below).
 
-### 6. Reboot (Optional)
+### 7. Reboot (Optional)
 
 ```bash
 adb reboot
@@ -114,11 +135,14 @@ This is the setup I use on my Shelly Wall Display XL:
 ## Configuration
 
 All configuration is done via the HTTP API. The service runs on **port 8080**.
+The examples assume an API token is set (see Installation step 5); without a token, drop the
+`Authorization` header (the MQTT broker/user/device id and the watchdog package can then not be changed).
 
 ### MQTT Setup
 
 ```bash
 curl -X POST http://<device-ip>:8080/settings \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "mqttEnabled": true,
@@ -135,6 +159,7 @@ Keep the Home Assistant app running in the foreground:
 
 ```bash
 curl -X POST http://<device-ip>:8080/settings \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "watchdogEnabled": true,
@@ -147,6 +172,7 @@ curl -X POST http://<device-ip>:8080/settings \
 
 ```bash
 curl -X POST http://<device-ip>:8080/settings \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "screenSaver": true,
@@ -157,6 +183,11 @@ curl -X POST http://<device-ip>:8080/settings \
 ```
 
 ## HTTP API Endpoints
+
+If `httpApiToken` is set, every endpoint requires `Authorization: Bearer <token>` (otherwise `401`).
+`POST /settings` returns `403` for protected keys when no token is set, and `400` for invalid JSON
+or values that do not match the setting's type (e.g. `"mqttPort": "abc"`; `"1883"` is accepted and
+stored as a number). Nothing is stored if any key is rejected.
 
 ### Device Info
 | Method | Endpoint | Description |
@@ -192,14 +223,21 @@ curl -X POST http://<device-ip>:8080/settings \
 
 All topics are prefixed with `shellyelevateservice/<client-id>/`.
 
+### Availability
+| Topic | Description |
+|-------|-------------|
+| `status` | `online` (retained) while connected, `offline` as MQTT will (LWT) and on service stop. Used as availability topic for all entities. |
+
 ### Sensors (published automatically)
 | Topic | Description |
 |-------|-------------|
-| `temp` | Temperature in °C |
-| `hum` | Humidity in % |
+| `temp` | Temperature in °C (every 30 s) |
+| `hum` | Humidity in % (every 30 s) |
 | `lux` | Light level in lux |
 | `proximity` | Proximity distance in cm |
+| `presence` | Presence sensor (ON = near / OFF = far), XL wide-range sensor |
 | `bri` | Screen brightness (0-255) |
+| `auto_bri` | Automatic brightness enabled (ON/OFF) |
 | `sleeping` | Screen dimmed state (ON/OFF) |
 | `relay_state` | Relay state (ON/OFF) |
 
@@ -222,10 +260,17 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 | Topic | Payload | Description |
 |-------|---------|-------------|
 | `relay_command` | `ON` / `OFF` | Control relay |
+| `bri_set` | `0`-`255` | Set screen brightness (turns automatic brightness off) |
+| `auto_bri_set` | `ON` / `OFF` | Turn automatic brightness on/off |
 | `sleep` | any | Dim screen |
 | `wake` | any | Wake screen |
 | `reboot` | any | Reboot device |
 | `restart_app` | any | Force kill and restart the watchdog app |
+| `update` | any | Re-publish discovery and all states |
+
+Retained messages on command topics are ignored (a retained `reboot` can never cause a reboot loop).
+The service also listens to `homeassistant/status` and re-publishes discovery and all states when
+Home Assistant comes `online`.
 
 ## Home Assistant Auto-Discovery
 
@@ -235,11 +280,21 @@ ShellyElevate publishes MQTT discovery config to `homeassistant/device/<client-i
 - Humidity sensor
 - Light sensor
 - Proximity sensor (if available)
-- Screen brightness sensor
+- Presence binary sensor (occupancy, if available)
+- Screen Brightness number (slider 0-255)
+- Auto Brightness switch
 - Sleeping binary sensor
 - Relay switch(es)
 - Button events (for automations)
 - Sleep/Wake/Reboot/Restart App buttons
+
+All entities use `shellyelevateservice/<client-id>/status` as availability topic, so they become
+**unavailable** when the display is offline. Stopping the service only marks the device offline; it is
+never removed from Home Assistant automatically (delete it in HA if you no longer need it).
+
+Setting the brightness from Home Assistant switches automatic brightness off (so the value sticks);
+turn the **Auto Brightness** switch back on to return to light-sensor control. With automatic
+brightness on, the brightness is only changed when the computed value moves by at least 3 steps.
 
 ## Home Assistant Automation Examples
 
@@ -356,7 +411,7 @@ All settings can be configured via `POST /settings` with a JSON body.
 | `screenSaver` | boolean | `true` | Enable screen dimming on idle |
 | `screenSaverDelay` | int | `45` | Seconds of inactivity before dimming |
 | `screenSaverMinBrightness` | int | `10` | Brightness level when dimmed (0-255) |
-| `wakeOnProximity` | boolean | `false` | Wake screen when proximity sensor triggered |
+| `wakeOnProximity` | boolean | `false` | Wake screen when the proximity/presence sensor reports "near" |
 
 ### App Watchdog Settings
 
@@ -371,6 +426,7 @@ All settings can be configured via `POST /settings` with a JSON body.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `httpServer` | boolean | `true` | Enable HTTP API server on port 8080 |
+| `httpApiToken` | string | `""` | Bearer token for the HTTP API (set via adb, see Installation step 5; masked in `GET /settings`) |
 | `mediaEnabled` | boolean | `true` | Enable media/audio playback |
 | `debugKeys` | boolean | `false` | Publish unknown key codes to MQTT for debugging |
 
