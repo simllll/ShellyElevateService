@@ -67,6 +67,11 @@ public class ShellyElevateService extends Service {
     private volatile boolean isDimmed = false;
     private volatile boolean keepAliveFlag = false;
 
+    // Auto-brightness only rewrites the brightness when it moves at least this many steps
+    // (or reaches the min/max end of the range); avoids a Settings + sysfs + MQTT write on
+    // every tiny light-sensor fluctuation.
+    private static final int AUTO_BRIGHTNESS_MIN_STEP = 3;
+
     // HTTP server retry
     private int httpRetryDelaySeconds = 5;
 
@@ -104,6 +109,18 @@ public class ShellyElevateService extends Service {
             } else if (INTENT_SCREEN_SAVER_STOPPED.equals(action)) {
                 Log.i(TAG, "Calling wakeScreen() from broadcast");
                 wakeScreen();
+            }
+        }
+    };
+
+    // Brightness control receiver (from MQTT)
+    private final BroadcastReceiver brightnessReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (INTENT_SET_BRIGHTNESS.equals(intent.getAction())) {
+                setManualBrightness(intent.getIntExtra(INTENT_BRIGHTNESS_KEY, 255));
+            } else if (INTENT_SET_AUTO_BRIGHTNESS.equals(intent.getAction())) {
+                setAutoBrightness(intent.getBooleanExtra(INTENT_AUTO_BRIGHTNESS_KEY, true));
             }
         }
     };
@@ -223,6 +240,12 @@ public class ShellyElevateService extends Service {
 
         // Restart app from MQTT
         lbm.registerReceiver(restartAppReceiver, new IntentFilter(INTENT_RESTART_APP));
+
+        // Brightness control from MQTT
+        IntentFilter brightnessFilter = new IntentFilter();
+        brightnessFilter.addAction(INTENT_SET_BRIGHTNESS);
+        brightnessFilter.addAction(INTENT_SET_AUTO_BRIGHTNESS);
+        lbm.registerReceiver(brightnessReceiver, brightnessFilter);
     }
 
     private void startIdleChecker() {
@@ -494,7 +517,46 @@ public class ShellyElevateService extends Service {
         if (!autoBrightness) return;
 
         final int brightness = calculateBrightnessFromLux(lux);
+        if (!shouldApplyAutoBrightness(deviceHelper.getLastScreenBrightness(), brightness)) return;
         mainHandler.post(() -> deviceHelper.setScreenBrightness(brightness));
+    }
+
+    private boolean shouldApplyAutoBrightness(int current, int target) {
+        if (current < 0) return true; // nothing applied yet
+        int diff = Math.abs(target - current);
+        if (diff == 0) return false;
+        if (diff >= AUTO_BRIGHTNESS_MIN_STEP) return true;
+        // Small step, but still allow reaching the ends of the range exactly
+        int minBrightness = sharedPreferences.getInt(SP_MIN_BRIGHTNESS, 48);
+        return target == minBrightness || target == 255;
+    }
+
+    /**
+     * MQTT brightness command: switches auto-brightness off so the value sticks and stores it
+     * as the manual brightness. Applied right away when awake, otherwise on the next wake.
+     */
+    private void setManualBrightness(int brightness) {
+        Log.i(TAG, "Manual brightness set to " + brightness);
+        sharedPreferences.edit()
+                .putInt(SP_BRIGHTNESS, brightness)
+                .putBoolean(SP_AUTOMATIC_BRIGHTNESS, false)
+                .apply();
+        if (mqttServer != null) mqttServer.publishAutoBrightness();
+        if (!isDimmed) {
+            mainHandler.post(() -> deviceHelper.setScreenBrightness(brightness));
+        }
+    }
+
+    private void setAutoBrightness(boolean enabled) {
+        Log.i(TAG, "Automatic brightness " + (enabled ? "enabled" : "disabled"));
+        sharedPreferences.edit().putBoolean(SP_AUTOMATIC_BRIGHTNESS, enabled).apply();
+        if (mqttServer != null) mqttServer.publishAutoBrightness();
+        if (!isDimmed) {
+            final int brightness = enabled
+                    ? calculateBrightnessFromLux(sensorManager.getLastMeasuredLux())
+                    : sharedPreferences.getInt(SP_BRIGHTNESS, 255);
+            mainHandler.post(() -> deviceHelper.setScreenBrightness(brightness));
+        }
     }
 
     /**
@@ -582,6 +644,7 @@ public class ShellyElevateService extends Service {
         lbm.unregisterReceiver(lightReceiver);
         lbm.unregisterReceiver(wakeSleepReceiver);
         lbm.unregisterReceiver(restartAppReceiver);
+        lbm.unregisterReceiver(brightnessReceiver);
 
         // Stop input reader
         if (inputEventReader != null) {

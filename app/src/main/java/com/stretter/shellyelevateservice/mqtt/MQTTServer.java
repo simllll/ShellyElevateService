@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
@@ -31,6 +32,7 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -40,6 +42,7 @@ public class MQTTServer {
 
     private static final long RECONNECT_DELAY_SEC = 5;
     private static final long TEMP_HUM_INTERVAL_SEC = 30;
+    private static final long MIN_BRIGHTNESS_PUBLISH_INTERVAL_MS = 500;
     private static final long CONNECT_RETRY_DELAY_SEC = 60;
 
     // Written on the scheduler thread, read from sensor/UI/HTTP threads
@@ -57,6 +60,13 @@ public class MQTTServer {
     private BroadcastReceiver settingsChangedReceiver;
     // Last known screen-saver state, re-sent on (re)connect and when Home Assistant restarts
     private volatile boolean sleeping = false;
+
+    // Brightness publish throttling, guarded by this
+    private int lastPublishedBrightness = Integer.MIN_VALUE;
+    private long lastBrightnessSentAtMs = 0L;
+    private int pendingBrightness;
+    // Trailing publish so the final value always goes out
+    private ScheduledFuture<?> brightnessTrailingFuture;
 
     public MQTTServer() {
         mMemoryPersistence = new MemoryPersistence();
@@ -114,11 +124,12 @@ public class MQTTServer {
         }
     }
 
-    private void schedule(Runnable task, long delay, TimeUnit unit) {
+    private ScheduledFuture<?> schedule(Runnable task, long delay, TimeUnit unit) {
         try {
-            scheduler.schedule(task, delay, unit);
+            return scheduler.schedule(task, delay, unit);
         } catch (RejectedExecutionException e) {
             Log.w("MQTT", "Delayed task rejected, scheduler is shut down");
+            return null;
         }
     }
 
@@ -132,6 +143,7 @@ public class MQTTServer {
             if (connectionKey().equals(appliedConnectionKey)) {
                 // Unrelated setting changed - just make sure we are connected if we should be
                 checkCredsAndConnect();
+                publishAutoBrightness();
                 return;
             }
 
@@ -314,6 +326,8 @@ public class MQTTServer {
                 parseTopic(MQTT_TOPIC_WAKE_BUTTON),
                 parseTopic(MQTT_TOPIC_REBOOT_BUTTON),
                 parseTopic(MQTT_TOPIC_RESTART_APP_BUTTON),
+                parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND),
+                parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
                 MQTT_TOPIC_HOME_ASSISTANT_STATUS
         };
     }
@@ -345,7 +359,8 @@ public class MQTTServer {
             publishRelay(num, mDeviceHelper.getRelay(num));
         }
         publishLux(mDeviceSensorManager.getLastMeasuredLux());
-        publishScreenBrightness(mDeviceHelper.getScreenBrightness());
+        forcePublishScreenBrightness(mDeviceHelper.getScreenBrightness());
+        publishAutoBrightness();
         if (device.hasProximitySensor) {
             publishProximity(mDeviceSensorManager.getLastMeasuredDistance());
         }
@@ -443,8 +458,59 @@ public class MQTTServer {
         publishInternal(parseTopic(MQTT_TOPIC_LUX_SENSOR), String.valueOf(lux), 1, false);
     }
 
-    public void publishScreenBrightness(int val) {
-        publishInternal(parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS), String.valueOf(val), 1, false);
+    /**
+     * Publishes the screen brightness, throttled to one message per 500 ms. Values arriving
+     * within the window are coalesced into one trailing publish of the latest value.
+     */
+    public void publishScreenBrightness(int brightness) {
+        if (!shouldSend()) return;
+        long now = SystemClock.elapsedRealtime();
+        synchronized (this) {
+            long since = now - lastBrightnessSentAtMs;
+            if (since < MIN_BRIGHTNESS_PUBLISH_INTERVAL_MS) {
+                pendingBrightness = brightness;
+                if (brightnessTrailingFuture == null) {
+                    brightnessTrailingFuture = schedule(this::publishTrailingBrightness,
+                            MIN_BRIGHTNESS_PUBLISH_INTERVAL_MS - since, TimeUnit.MILLISECONDS);
+                }
+                return;
+            }
+            // A newer value supersedes a pending trailing publish
+            if (brightnessTrailingFuture != null) {
+                brightnessTrailingFuture.cancel(false);
+                brightnessTrailingFuture = null;
+            }
+            if (brightness == lastPublishedBrightness) return;
+            lastPublishedBrightness = brightness;
+            lastBrightnessSentAtMs = now;
+        }
+        execute(() -> publishInternal(parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS), String.valueOf(brightness), 1, false));
+    }
+
+    private void publishTrailingBrightness() {
+        int value;
+        synchronized (this) {
+            brightnessTrailingFuture = null;
+            value = pendingBrightness;
+            if (value == lastPublishedBrightness) return;
+            lastPublishedBrightness = value;
+            lastBrightnessSentAtMs = SystemClock.elapsedRealtime();
+        }
+        publishInternal(parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS), String.valueOf(value), 1, false);
+    }
+
+    // Full state sync: always send, bypassing the "unchanged" check
+    private void forcePublishScreenBrightness(int brightness) {
+        synchronized (this) {
+            lastPublishedBrightness = brightness;
+            lastBrightnessSentAtMs = SystemClock.elapsedRealtime();
+        }
+        publishInternal(parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS), String.valueOf(brightness), 1, false);
+    }
+
+    public void publishAutoBrightness() {
+        boolean auto = mSharedPreferences.getBoolean(SP_AUTOMATIC_BRIGHTNESS, true);
+        publishInternal(parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_STATE), auto ? "ON" : "OFF", 1, false);
     }
     public void publishProximity(float distance) {
         publishInternal(parseTopic(MQTT_TOPIC_PROXIMITY_SENSOR), String.valueOf(distance), 1, false);
@@ -631,7 +697,28 @@ public class MQTTServer {
         sleepingBinarySensorPayload.put("unique_id", clientId + "_sleeping");
         components.put(clientId + "_sleeping", sleepingBinarySensorPayload);
 
-        // TODO: brightness as both state and control
+        JSONObject brightnessPayload = new JSONObject();
+        brightnessPayload.put("p", "number");
+        brightnessPayload.put("name", "Screen Brightness");
+        brightnessPayload.put("state_topic", parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS));
+        brightnessPayload.put("command_topic", parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND));
+        brightnessPayload.put("min", 0);
+        brightnessPayload.put("max", 255);
+        brightnessPayload.put("step", 1);
+        brightnessPayload.put("mode", "slider");
+        brightnessPayload.put("icon", "mdi:brightness-6");
+        brightnessPayload.put("unique_id", clientId + "_screen_brightness");
+        components.put(clientId + "_screen_brightness", brightnessPayload);
+
+        JSONObject autoBrightnessPayload = new JSONObject();
+        autoBrightnessPayload.put("p", "switch");
+        autoBrightnessPayload.put("name", "Auto Brightness");
+        autoBrightnessPayload.put("state_topic", parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_STATE));
+        autoBrightnessPayload.put("command_topic", parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND));
+        autoBrightnessPayload.put("entity_category", "config");
+        autoBrightnessPayload.put("icon", "mdi:brightness-auto");
+        autoBrightnessPayload.put("unique_id", clientId + "_auto_brightness");
+        components.put(clientId + "_auto_brightness", autoBrightnessPayload);
 
         configPayload.put("cmps", components);
 

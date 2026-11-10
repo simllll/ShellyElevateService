@@ -46,6 +46,12 @@ public class Constants {
     public static final String INTENT_PROXIMITY_UPDATED = "com.stretter.shellyelevateservice.PROXIMITY_UPDATED";
     public static final String INTENT_PROXIMITY_KEY = "proximityValue";
 
+    //Brightness control Intents (from MQTT)
+    public static final String INTENT_SET_BRIGHTNESS = "com.stretter.shellyelevateservice.SET_BRIGHTNESS";
+    public static final String INTENT_BRIGHTNESS_KEY = "brightness";
+    public static final String INTENT_SET_AUTO_BRIGHTNESS = "com.stretter.shellyelevateservice.SET_AUTO_BRIGHTNESS";
+    public static final String INTENT_AUTO_BRIGHTNESS_KEY = "automaticBrightness";
+
     //Settings Intent
     public static final String INTENT_SETTINGS_CHANGED = "com.stretter.shellyelevateservice.SETTINGS_CHANGED";
 
@@ -56,6 +62,9 @@ public class Constants {
     public static final String MQTT_TOPIC_HUM_SENSOR = "shellyelevateservice/%s/hum";
     public static final String MQTT_TOPIC_LUX_SENSOR = "shellyelevateservice/%s/lux";
     public static final String MQTT_TOPIC_SCREEN_BRIGHTNESS = "shellyelevateservice/%s/bri";
+    public static final String MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND = "shellyelevateservice/%s/bri_set";
+    public static final String MQTT_TOPIC_AUTO_BRIGHTNESS_STATE = "shellyelevateservice/%s/auto_bri";
+    public static final String MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND = "shellyelevateservice/%s/auto_bri_set";
     public static final String MQTT_TOPIC_PROXIMITY_SENSOR = "shellyelevateservice/%s/proximity";
     public static final String MQTT_TOPIC_RELAY_STATE = "shellyelevateservice/%s/relay_state";
     public static final String MQTT_TOPIC_RELAY_COMMAND = "shellyelevateservice/%s/relay_command";

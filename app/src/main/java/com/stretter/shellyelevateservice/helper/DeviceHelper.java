@@ -36,7 +36,7 @@ public class DeviceHelper {
             };
     private String screenBrightnessFile;
     private boolean screenOn = true;
-    private int lastScreenBrightness;
+    private volatile int lastScreenBrightness = -1;
 
     private static final String TAG = "DeviceHelper";
 
@@ -59,7 +59,7 @@ public class DeviceHelper {
     public void setScreenOn(boolean on) {
         screenOn = on;
 
-        setScreenBrightnessInternal(screenOn ? lastScreenBrightness: 0);
+        setScreenBrightnessInternal(screenOn ? Math.max(lastScreenBrightness, 0) : 0);
     }
 
     public boolean getScreenOn() {
@@ -103,12 +103,17 @@ public class DeviceHelper {
         writeFileContent(screenBrightnessFile, String.valueOf(brightness));
     }
 
+    /** Last brightness applied via setScreenBrightness, -1 if none yet. */
+    public int getLastScreenBrightness() {
+        return lastScreenBrightness;
+    }
+
     public int getScreenBrightness() {
         try {
             return Integer.parseInt(sanitizeString(readFileContent(screenBrightnessFile)));
         } catch (NumberFormatException e) {
             // no readable sysfs node: report what we last applied
-            return lastScreenBrightness;
+            return Math.max(lastScreenBrightness, 0);
         }
     }
 

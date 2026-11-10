@@ -81,6 +81,22 @@ public class ShellyElevateMQTTCallback {
                     mainHandler.post(() -> Toast.makeText(mApplicationContext, waitMessage, Toast.LENGTH_LONG).show());
                 }
                 break;
+            case MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND:
+                try {
+                    // HA number entities may send "128.0"
+                    int brightness = (int) Math.round(Double.parseDouble(payload.trim()));
+                    Intent brightnessIntent = new Intent(INTENT_SET_BRIGHTNESS);
+                    brightnessIntent.putExtra(INTENT_BRIGHTNESS_KEY, Math.max(0, Math.min(255, brightness)));
+                    LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(brightnessIntent);
+                } catch (NumberFormatException e) {
+                    Log.w("MQTT", "Ignoring invalid brightness: " + payload);
+                }
+                break;
+            case MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND:
+                Intent autoIntent = new Intent(INTENT_SET_AUTO_BRIGHTNESS);
+                autoIntent.putExtra(INTENT_AUTO_BRIGHTNESS_KEY, "ON".equalsIgnoreCase(payload.trim()));
+                LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(autoIntent);
+                break;
             case MQTT_TOPIC_RESTART_APP_BUTTON:
                 // Broadcast to ShellyElevateService to kill and restart the watchdog app
                 Log.i("MQTT", "Restart app command received");
