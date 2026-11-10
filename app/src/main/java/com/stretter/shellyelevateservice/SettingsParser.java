@@ -1,5 +1,6 @@
 package com.stretter.shellyelevateservice;
 
+import static com.stretter.shellyelevateservice.Constants.SP_MQTT_PASSWORD;
 import static com.stretter.shellyelevateservice.ShellyElevateApplication.mSharedPreferences;
 
 import android.content.SharedPreferences;
@@ -14,6 +15,9 @@ import java.util.List;
 import java.util.Map;
 
 public class SettingsParser {
+    // Secrets are never returned by the (unauthenticated) HTTP API. Posting the mask back keeps the stored value.
+    static final String SECRET_MASK = "********";
+
     public JSONObject getSettings() throws JSONException {
         JSONObject settings = new JSONObject();
         Map<String, ?> allPreferences = mSharedPreferences.getAll();
@@ -23,7 +27,11 @@ public class SettingsParser {
         Collections.sort(sortedKeys);
 
         for (String key : sortedKeys) {
-            settings.put(key, allPreferences.get(key));
+            Object value = allPreferences.get(key);
+            if (SP_MQTT_PASSWORD.equals(key) && value instanceof String && !((String) value).isEmpty()) {
+                value = SECRET_MASK;
+            }
+            settings.put(key, value);
         }
         return settings;
     }
@@ -32,6 +40,9 @@ public class SettingsParser {
         SharedPreferences.Editor editor = mSharedPreferences.edit();
         for (Iterator<String> it = settings.keys(); it.hasNext(); ) {
             String key = it.next();
+            if (SP_MQTT_PASSWORD.equals(key) && SECRET_MASK.equals(settings.optString(key))) {
+                continue;
+            }
             Class<?> type = settings.get(key).getClass();
             if (type.equals(String.class)) {
                 editor.putString(key, settings.getString(key));

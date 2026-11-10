@@ -33,6 +33,14 @@ public class DeviceSensorManager implements SensorEventListener {
     private static final String TAG = "DeviceSensorManager";
     private float lastMeasuredLux = 0.0f;
     private float lastPublishedLux = -1f; // initialize to invalid value
+    private long lastLuxPublishTime = 0L;
+
+    // Lux publishing: only significant changes, rate limited. Small absolute changes at low
+    // light levels are sensor noise and would otherwise flood MQTT/Home Assistant.
+    private static final float LUX_MIN_ABS_CHANGE = 2f;
+    private static final float LUX_MIN_REL_CHANGE = 0.10f;
+    private static final long LUX_MIN_INTERVAL_MS = 10_000L;
+    private static final long LUX_MAX_INTERVAL_MS = 300_000L;
 
     private final Context context;
 
@@ -85,20 +93,24 @@ public class DeviceSensorManager implements SensorEventListener {
                 lastMeasuredLux = event.values[0];
                 boolean shouldPublish = false;
 
+                long now = System.currentTimeMillis();
                 if (lastPublishedLux < 0) {
                     // First reading
                     shouldPublish = true;
                 } else {
                     float diff = Math.abs(lastMeasuredLux - lastPublishedLux);
-                    float change = diff / lastPublishedLux;
-                    if (change >= 0.04f) { // 4% threshold - TODO: make it configurable
-                        shouldPublish = true;
-                    }
+                    // Math.max avoids dividing by zero in the dark (0 lux)
+                    float change = diff / Math.max(lastPublishedLux, 1f);
+                    long sinceLast = now - lastLuxPublishTime;
+                    boolean significant = diff >= LUX_MIN_ABS_CHANGE && change >= LUX_MIN_REL_CHANGE;
+                    shouldPublish = (significant && sinceLast >= LUX_MIN_INTERVAL_MS)
+                            || (diff > 0f && sinceLast >= LUX_MAX_INTERVAL_MS);
                 }
 
                 if (shouldPublish && mMQTTServer.shouldSend()) {
                     mMQTTServer.publishLux(lastMeasuredLux);
                     lastPublishedLux = lastMeasuredLux;
+                    lastLuxPublishTime = now;
                 }
 
                 // Always broadcast locally for UI updates, even if not published
