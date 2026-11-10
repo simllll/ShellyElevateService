@@ -60,6 +60,8 @@ public class MQTTServer {
     private BroadcastReceiver settingsChangedReceiver;
     // Last known screen-saver state, re-sent on (re)connect and when Home Assistant restarts
     private volatile boolean sleeping = false;
+    // Last presence state from the gpio_keys presence sensor, null until the first event
+    private volatile Boolean presence = null;
 
     // Brightness publish throttling, guarded by this
     private int lastPublishedBrightness = Integer.MIN_VALUE;
@@ -365,6 +367,8 @@ public class MQTTServer {
             publishProximity(mDeviceSensorManager.getLastMeasuredDistance());
         }
         publishSleeping(sleeping);
+        Boolean lastPresence = presence;
+        if (lastPresence != null) publishPresence(lastPresence);
     }
 
     /**
@@ -521,6 +525,12 @@ public class MQTTServer {
         publishInternal(parseTopic(MQTT_TOPIC_RELAY_STATE) + mqttSuffix, state ? "ON" : "OFF", 1, false);
     }
 
+    /** Records the presence (occupancy) state and publishes it if connected. */
+    public void publishPresence(boolean present) {
+        presence = present;
+        publishInternal(parseTopic(MQTT_TOPIC_PRESENCE), present ? "ON" : "OFF", 1, false);
+    }
+
     /** Records the screen-saver state and publishes it if connected. */
     public void publishSleeping(boolean state) {
         sleeping = state;
@@ -623,6 +633,15 @@ public class MQTTServer {
             proximitySensorPayload.put("state_class", "measurement");
             proximitySensorPayload.put("unique_id", clientId + "_proximity");
             components.put(clientId + "_proximity", proximitySensorPayload);
+
+            // Wide-range presence sensor (gpio_keys KEY_F5 near / KEY_F6 far)
+            JSONObject presencePayload = new JSONObject();
+            presencePayload.put("p", "binary_sensor");
+            presencePayload.put("name", "Presence");
+            presencePayload.put("state_topic", parseTopic(MQTT_TOPIC_PRESENCE));
+            presencePayload.put("device_class", "occupancy");
+            presencePayload.put("unique_id", clientId + "_presence");
+            components.put(clientId + "_presence", presencePayload);
         }
 
         // buttons (numbered 1-4 for user-friendliness)

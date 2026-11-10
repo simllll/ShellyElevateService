@@ -66,6 +66,7 @@ public class Constants {
     public static final String MQTT_TOPIC_AUTO_BRIGHTNESS_STATE = "shellyelevateservice/%s/auto_bri";
     public static final String MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND = "shellyelevateservice/%s/auto_bri_set";
     public static final String MQTT_TOPIC_PROXIMITY_SENSOR = "shellyelevateservice/%s/proximity";
+    public static final String MQTT_TOPIC_PRESENCE = "shellyelevateservice/%s/presence";
     public static final String MQTT_TOPIC_RELAY_STATE = "shellyelevateservice/%s/relay_state";
     public static final String MQTT_TOPIC_RELAY_COMMAND = "shellyelevateservice/%s/relay_command";
     public static final String MQTT_TOPIC_UPDATE = "shellyelevateservice/%s/update";

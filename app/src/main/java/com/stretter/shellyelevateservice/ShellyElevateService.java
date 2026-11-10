@@ -72,6 +72,10 @@ public class ShellyElevateService extends Service {
     // every tiny light-sensor fluctuation.
     private static final int AUTO_BRIGHTNESS_MIN_STEP = 3;
 
+    // Wide-range presence sensor (Blake) reports through gpio_keys as key presses
+    private static final int KEY_PRESENCE_NEAR = 63; // KEY_F5
+    private static final int KEY_PRESENCE_FAR = 64;  // KEY_F6
+
     // HTTP server retry
     private int httpRetryDelaySeconds = 5;
 
@@ -501,13 +505,31 @@ public class ShellyElevateService extends Service {
             mqttServer.publishProximity(proximity);
         }
 
-        // Wake on proximity if enabled and something is close
-        if (wakeOnProximity && isDimmed && proximity < maxRange - 0.5f) {
+        // Only "near" counts as interaction; a "far" event (someone walking away) must not
+        // reset the idle timer and postpone dimming
+        if (proximity < maxRange - 0.5f) {
+            onSomethingNear(wakeOnProximity);
+        }
+    }
+
+    /**
+     * Presence sensor event (gpio_keys KEY_F5 = near, KEY_F6 = far).
+     */
+    private void onPresenceChanged(boolean near) {
+        Log.d(TAG, "Presence: " + (near ? "near" : "far"));
+        if (mqttServer != null) {
+            mqttServer.publishPresence(near);
+        }
+        if (near) {
+            onSomethingNear(sharedPreferences.getBoolean(SP_WAKE_ON_PROXIMITY, false));
+        }
+    }
+
+    private void onSomethingNear(boolean wakeOnProximity) {
+        lastInteractionTime = System.currentTimeMillis();
+        if (wakeOnProximity && isDimmed) {
             wakeScreen();
         }
-
-        // Any proximity event counts as interaction
-        lastInteractionTime = System.currentTimeMillis();
     }
 
     private void onLightChanged(float lux) {
@@ -568,6 +590,15 @@ public class ShellyElevateService extends Service {
         boolean debugKeys = sharedPreferences.getBoolean(SP_DEBUG_KEYS, false);
         if (debugKeys) {
             Log.i(TAG, "Raw button event: keyCode=" + keyCode + ", pressed=" + pressed);
+        }
+
+        // The presence sensor is not a button: it must not wake the screen unconditionally
+        // (only with wakeOnProximity) and a "far" event must not count as interaction
+        if (keyCode == KEY_PRESENCE_NEAR || keyCode == KEY_PRESENCE_FAR) {
+            if (pressed) {
+                onPresenceChanged(keyCode == KEY_PRESENCE_NEAR);
+            }
+            return;
         }
 
         // Any button press wakes the screen and resets idle timer
