@@ -6,37 +6,35 @@ import static com.stretter.shellyelevateservice.ShellyElevateApplication.mDevice
 import static com.stretter.shellyelevateservice.ShellyElevateApplication.mMQTTServer;
 
 import android.content.Intent;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.widget.Toast;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
-import org.eclipse.paho.mqttv5.client.IMqttToken;
-import org.eclipse.paho.mqttv5.client.MqttCallback;
-import org.eclipse.paho.mqttv5.client.MqttDisconnectResponse;
-import org.eclipse.paho.mqttv5.common.MqttException;
 import org.eclipse.paho.mqttv5.common.MqttMessage;
-import org.eclipse.paho.mqttv5.common.packet.MqttProperties;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 import com.stretter.shellyelevateservice.ShellyElevateApplication;
 
-public class ShellyElevateMQTTCallback implements MqttCallback {
-    @Override
-    public void disconnected(MqttDisconnectResponse disconnectResponse) {
-        Log.i("MQTT", "Disconnected");
-        Toast.makeText(mApplicationContext, "MQTT disconnected", Toast.LENGTH_SHORT).show();
-    }
+/**
+ * Dispatches inbound MQTT command messages. Called from the Paho callback thread.
+ */
+public class ShellyElevateMQTTCallback {
+    // Toasts need a Looper thread, the Paho callback thread has none
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    @Override
-    public void mqttErrorOccurred(MqttException exception) {
-        Log.e("MQTT", "Error occurred: " + exception);
-    }
-
-    @Override
     public void messageArrived(String topic, MqttMessage message) {
+        // A retained command is replayed by the broker on every (re)subscribe. Never act on
+        // those, otherwise e.g. a retained reboot command would reboot the device in a loop.
+        if (message.isRetained()) {
+            Log.w("MQTT", "Ignoring retained message on " + topic);
+            return;
+        }
+
         switch (topic.replace(mMQTTServer.getClientId(), "%s")) {
             case MQTT_TOPIC_UPDATE:
 	            mMQTTServer.publishStatus();
@@ -67,7 +65,8 @@ public class ShellyElevateMQTTCallback implements MqttCallback {
                         Log.e("MQTT", "Error rebooting:", e);
                     }
                 } else {
-                    Toast.makeText(mApplicationContext, "Please wait %s seconds before rebooting".replace("%s",String.valueOf(20-deltaTime) ), Toast.LENGTH_LONG).show();
+                    String waitMessage = "Please wait %s seconds before rebooting".replace("%s", String.valueOf(20 - deltaTime));
+                    mainHandler.post(() -> Toast.makeText(mApplicationContext, waitMessage, Toast.LENGTH_LONG).show());
                 }
                 break;
             case MQTT_TOPIC_RESTART_APP_BUTTON:
@@ -77,20 +76,5 @@ public class ShellyElevateMQTTCallback implements MqttCallback {
                 LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(restartIntent);
                 break;
         }
-    }
-
-    @Override
-    public void deliveryComplete(IMqttToken token) {
-
-    }
-
-    @Override
-    public void connectComplete(boolean reconnect, String serverURI) {
-        Log.i("MQTT", "Connected to: " + serverURI);
-    }
-
-    @Override
-    public void authPacketArrived(int reasonCode, MqttProperties properties) {
-
     }
 }
