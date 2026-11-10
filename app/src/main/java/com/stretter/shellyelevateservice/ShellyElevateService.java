@@ -283,19 +283,20 @@ public class ShellyElevateService extends Service {
         boolean enabled = sharedPreferences.getBoolean(SP_WATCHDOG_ENABLED, false);
         Log.i(TAG, "startAppWatchdog() called, enabled=" + enabled);
 
-        if (!enabled) {
-            Log.i(TAG, "App watchdog disabled in settings");
-            return;
-        }
-
         String packageName = sharedPreferences.getString(SP_WATCHDOG_PACKAGE, DEFAULT_WATCHDOG_PACKAGE);
         int interval = sharedPreferences.getInt(SP_WATCHDOG_INTERVAL, DEFAULT_WATCHDOG_INTERVAL);
 
+        // The periodic check is always scheduled and reads the setting on every run,
+        // so enabling the watchdog via HTTP/MQTT later takes effect without a service restart.
         Log.i(TAG, "Starting app watchdog for package: " + packageName + " (interval: " + interval + "s)");
 
-        // Launch the app immediately on startup
-        Log.i(TAG, "Watchdog: Initial launch of " + packageName);
-        launchApp(packageName);
+        if (enabled) {
+            // Launch the app immediately on startup
+            Log.i(TAG, "Watchdog: Initial launch of " + packageName);
+            launchApp(packageName);
+        } else {
+            Log.i(TAG, "App watchdog disabled in settings (checks will start once enabled)");
+        }
 
         // Schedule periodic checks
         scheduler.scheduleWithFixedDelay(() -> {
