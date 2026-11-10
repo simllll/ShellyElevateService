@@ -28,6 +28,18 @@ public class ShellyElevateMQTTCallback {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public void messageArrived(String topic, MqttMessage message) {
+        String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
+
+        if (MQTT_TOPIC_HOME_ASSISTANT_STATUS.equals(topic)) {
+            // Home Assistant (re)started: re-send discovery and all current states.
+            // A retained "online" is skipped too, we already published right after connecting.
+            if (!message.isRetained() && "online".equals(payload.trim())) {
+                Log.i("MQTT", "Home Assistant online, republishing discovery and states");
+                mMQTTServer.publishStatus();
+            }
+            return;
+        }
+
         // A retained command is replayed by the broker on every (re)subscribe. Never act on
         // those, otherwise e.g. a retained reboot command would reboot the device in a loop.
         if (message.isRetained()) {
@@ -40,10 +52,10 @@ public class ShellyElevateMQTTCallback {
 	            mMQTTServer.publishStatus();
 	            break;
             case MQTT_TOPIC_RELAY_COMMAND:
-                mDeviceHelper.setRelay(0, new String(message.getPayload(), StandardCharsets.UTF_8).contains("ON"));
+                mDeviceHelper.setRelay(0, payload.contains("ON"));
                 break;
             case MQTT_TOPIC_RELAY_COMMAND + "_1":
-                mDeviceHelper.setRelay(1, new String(message.getPayload(), StandardCharsets.UTF_8).contains("ON"));
+                mDeviceHelper.setRelay(1, payload.contains("ON"));
                 break;
             case MQTT_TOPIC_SLEEP_BUTTON:
                 // Broadcast to ShellyElevateService to dim screen

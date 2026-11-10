@@ -409,8 +409,8 @@ public class ShellyElevateService extends Service {
         Log.i(TAG, "Dimming screen to brightness=" + minBrightness);
         mainHandler.post(() -> deviceHelper.setScreenBrightness(minBrightness));
 
-        // Publish state via MQTT
-        if (mqttServer != null && mqttServer.shouldSend()) {
+        // Publish state via MQTT (also remembered for re-publishing after a reconnect)
+        if (mqttServer != null) {
             mqttServer.publishSleeping(true);
         }
 
@@ -436,8 +436,8 @@ public class ShellyElevateService extends Service {
         Log.i(TAG, "Waking screen to brightness=" + finalBrightness);
         mainHandler.post(() -> deviceHelper.setScreenBrightness(finalBrightness));
 
-        // Publish state via MQTT
-        if (mqttServer != null && mqttServer.shouldSend()) {
+        // Publish state via MQTT (also remembered for re-publishing after a reconnect)
+        if (mqttServer != null) {
             mqttServer.publishSleeping(false);
         }
 

@@ -39,6 +39,7 @@ import com.stretter.shellyelevateservice.DeviceModel;
 public class MQTTServer {
 
     private static final long RECONNECT_DELAY_SEC = 5;
+    private static final long TEMP_HUM_INTERVAL_SEC = 30;
     private static final long CONNECT_RETRY_DELAY_SEC = 60;
 
     // Written on the scheduler thread, read from sensor/UI/HTTP threads
@@ -54,6 +55,8 @@ public class MQTTServer {
     // Connection settings the current client was built from
     private volatile String appliedConnectionKey = "";
     private BroadcastReceiver settingsChangedReceiver;
+    // Last known screen-saver state, re-sent on (re)connect and when Home Assistant restarts
+    private volatile boolean sleeping = false;
 
     public MQTTServer() {
         mMemoryPersistence = new MemoryPersistence();
@@ -96,7 +99,7 @@ public class MQTTServer {
                 // an escaping exception would cancel the fixed-delay schedule for good
                 Log.e("MQTT", "Periodic temp/humidity publish failed", t);
             }
-        }, 0, 5, TimeUnit.SECONDS);
+        }, TEMP_HUM_INTERVAL_SEC, TEMP_HUM_INTERVAL_SEC, TimeUnit.SECONDS);
     }
 
     // Scheduler helpers that never throw once the scheduler is shut down
@@ -315,40 +318,38 @@ public class MQTTServer {
         };
     }
 
+    /**
+     * Full sync: discovery config, availability and all current states.
+     * Called after (re)connecting, on the update command and when Home Assistant comes online.
+     */
     public void publishStatus() {
         if (!isClientConnected()) return;
 
         execute(() -> {
             try {
-                // Publish hello info
                 publishHello();
-
-                // Publish config
                 publishConfig();
-
-                // Publish online status last
+                // Availability after the config so HA knows the topic before it goes online
                 publishInternal(parseTopic(MQTT_TOPIC_STATUS), "online", 1, true);
-
-                // Stagger sensor publishes
-                schedule(this::publishTempAndHum, 50, TimeUnit.MILLISECONDS);
-                for (int num = 0; num < DeviceModel.getReportedDevice().inputs; num++) {
-                    int finalNum = num;
-                    schedule(() -> publishRelay(finalNum, mDeviceHelper.getRelay(finalNum)), 100, TimeUnit.MILLISECONDS);
-                }
-                schedule(() -> publishLux(mDeviceSensorManager.getLastMeasuredLux()), 150, TimeUnit.MILLISECONDS);
-                schedule(() -> publishScreenBrightness(mDeviceHelper.getScreenBrightness()), 200, TimeUnit.MILLISECONDS);
-
-                if (DeviceModel.getReportedDevice().hasProximitySensor) {
-                    schedule(() -> publishProximity(mDeviceSensorManager.getLastMeasuredDistance()), 250, TimeUnit.MILLISECONDS);
-                }
-
-                // Sleeping state is published by ShellyElevateService when it dims/wakes
-                schedule(() -> publishSleeping(false), 300, TimeUnit.MILLISECONDS);
-
+                publishCurrentStates();
             } catch (Exception e) {
                 Log.e("MQTT", "publishStatus failed", e);
             }
         });
+    }
+
+    private void publishCurrentStates() {
+        DeviceModel device = DeviceModel.getReportedDevice();
+        publishTempAndHum();
+        for (int num = 0; num < device.inputs; num++) {
+            publishRelay(num, mDeviceHelper.getRelay(num));
+        }
+        publishLux(mDeviceSensorManager.getLastMeasuredLux());
+        publishScreenBrightness(mDeviceHelper.getScreenBrightness());
+        if (device.hasProximitySensor) {
+            publishProximity(mDeviceSensorManager.getLastMeasuredDistance());
+        }
+        publishSleeping(sleeping);
     }
 
     /**
@@ -442,7 +443,7 @@ public class MQTTServer {
         publishInternal(parseTopic(MQTT_TOPIC_LUX_SENSOR), String.valueOf(lux), 1, false);
     }
 
-    public void publishScreenBrightness(float val) {
+    public void publishScreenBrightness(int val) {
         publishInternal(parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS), String.valueOf(val), 1, false);
     }
     public void publishProximity(float distance) {
@@ -454,7 +455,9 @@ public class MQTTServer {
         publishInternal(parseTopic(MQTT_TOPIC_RELAY_STATE) + mqttSuffix, state ? "ON" : "OFF", 1, false);
     }
 
+    /** Records the screen-saver state and publishes it if connected. */
     public void publishSleeping(boolean state) {
+        sleeping = state;
         publishInternal(parseTopic(MQTT_TOPIC_SLEEPING_BINARY_SENSOR), state ? "ON" : "OFF", 1, false);
     }
 
@@ -479,15 +482,7 @@ public class MQTTServer {
         try {
             JSONObject json = new JSONObject();
             json.put("name", mApplicationContext.getPackageName());
-
-            String version = "unknown";
-            try {
-                PackageInfo pInfo = mApplicationContext.getPackageManager()
-                        .getPackageInfo(mApplicationContext.getPackageName(), 0);
-                version = pInfo.versionName;
-            } catch (PackageManager.NameNotFoundException ignored) {}
-
-            json.put("version", version);
+            json.put("version", getVersionName());
             var device = DeviceModel.getReportedDevice();
             json.put("modelName", device.name());
             json.put("proximity", device.hasProximitySensor ? "true" : "false");
@@ -501,11 +496,19 @@ public class MQTTServer {
     private void publishConfig() throws JSONException {
         JSONObject configPayload = new JSONObject();
 
+        DeviceModel model = DeviceModel.getReportedDevice();
         JSONObject device = new JSONObject();
         device.put("ids", clientId);
         device.put("name", "Shelly Wall Display");
         device.put("mf", "Shelly");
+        device.put("mdl", model.friendlyName);
+        device.put("mdl_id", model.modelName);
+        device.put("sw", getVersionName());
         configPayload.put("dev", device);
+
+        // Shared by all components: entities become unavailable when the device is offline
+        // (retained "online" on connect, "offline" as will message and on shutdown)
+        configPayload.put("availability_topic", parseTopic(MQTT_TOPIC_STATUS));
 
         JSONObject origin = new JSONObject();
         origin.put("name", "ShellyElevateV2");
@@ -520,6 +523,7 @@ public class MQTTServer {
         tempSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_TEMP_SENSOR));
         tempSensorPayload.put("device_class", "temperature");
         tempSensorPayload.put("unit_of_measurement", "°C");
+        tempSensorPayload.put("state_class", "measurement");
         tempSensorPayload.put("unique_id", clientId + "_temp");
         components.put(clientId + "_temp", tempSensorPayload);
 
@@ -529,6 +533,7 @@ public class MQTTServer {
         humSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_HUM_SENSOR));
         humSensorPayload.put("device_class", "humidity");
         humSensorPayload.put("unit_of_measurement", "%");
+        humSensorPayload.put("state_class", "measurement");
         humSensorPayload.put("unique_id", clientId + "_hum");
         components.put(clientId + "_hum", humSensorPayload);
 
@@ -538,6 +543,7 @@ public class MQTTServer {
         luxSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_LUX_SENSOR));
         luxSensorPayload.put("device_class", "illuminance");
         luxSensorPayload.put("unit_of_measurement", "lx");
+        luxSensorPayload.put("state_class", "measurement");
         luxSensorPayload.put("unique_id", clientId + "_lux");
         components.put(clientId + "_lux", luxSensorPayload);
 
@@ -548,6 +554,7 @@ public class MQTTServer {
             proximitySensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_PROXIMITY_SENSOR));
             proximitySensorPayload.put("device_class", "distance");
             proximitySensorPayload.put("unit_of_measurement", "cm");
+            proximitySensorPayload.put("state_class", "measurement");
             proximitySensorPayload.put("unique_id", clientId + "_proximity");
             components.put(clientId + "_proximity", proximitySensorPayload);
         }
@@ -628,9 +635,17 @@ public class MQTTServer {
 
         configPayload.put("cmps", components);
 
-        configPayload.put("state_topic", MQTT_TOPIC_STATUS);
-
         publishInternal(parseTopic(MQTT_TOPIC_CONFIG_DEVICE), configPayload.toString(), 1, true);
+    }
+
+    private static String getVersionName() {
+        try {
+            PackageInfo pInfo = mApplicationContext.getPackageManager()
+                    .getPackageInfo(mApplicationContext.getPackageName(), 0);
+            return pInfo.versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            return "unknown";
+        }
     }
 
     private String parseTopic(String topic) {

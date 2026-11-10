@@ -104,7 +104,12 @@ public class DeviceHelper {
     }
 
     public int getScreenBrightness() {
-        return Integer.parseInt(sanitizeString(readFileContent(screenBrightnessFile)));
+        try {
+            return Integer.parseInt(sanitizeString(readFileContent(screenBrightnessFile)));
+        } catch (NumberFormatException e) {
+            // no readable sysfs node: report what we last applied
+            return lastScreenBrightness;
+        }
     }
 
     public boolean getRelay(int num) {
