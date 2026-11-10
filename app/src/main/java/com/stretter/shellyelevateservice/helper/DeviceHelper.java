@@ -72,7 +72,7 @@ public class DeviceHelper {
     }
 
     private void setScreenBrightnessInternal(int brightness){
-        mMQTTServer.publishScreenBrightness(brightness);
+        if (mMQTTServer != null) mMQTTServer.publishScreenBrightness(brightness);
 
         writeScreenBrightness(brightness);
     }
@@ -129,7 +129,7 @@ public class DeviceHelper {
             writeFileContent(relayFile, state ? "1" : "0");
         }
 
-        if (mMQTTServer.shouldSend()) {
+        if (mMQTTServer != null && mMQTTServer.shouldSend()) {
             mMQTTServer.publishRelay(num, state);
         }
     }

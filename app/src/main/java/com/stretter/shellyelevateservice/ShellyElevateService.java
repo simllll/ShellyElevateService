@@ -175,20 +175,32 @@ public class ShellyElevateService extends Service {
     }
 
     private void initializeComponents() {
+        // Components read each other through the static references in ShellyElevateApplication
+        // (MQTTServer schedules sensor publishes right away, DeviceHelper publishes brightness via
+        // mMQTTServer, ...). Assign every reference as soon as the component exists so nothing
+        // constructed later can observe a null.
+        ShellyElevateApplication.mSharedPreferences = sharedPreferences;
+        ShellyElevateApplication.mApplicationContext = getApplicationContext();
+
         // Device helper for hardware access (relay, brightness, temp/humidity)
         deviceHelper = new DeviceHelper();
+        ShellyElevateApplication.mDeviceHelper = deviceHelper;
 
         // Sensor manager for lux and proximity
         sensorManager = new DeviceSensorManager(this);
+        ShellyElevateApplication.mDeviceSensorManager = sensorManager;
 
         // Media helper for audio
         mediaHelper = new MediaHelper();
+        ShellyElevateApplication.mMediaHelper = mediaHelper;
 
         // MQTT server
         mqttServer = new MQTTServer();
+        ShellyElevateApplication.mMQTTServer = mqttServer;
 
         // HTTP server
         httpServer = new HttpServer();
+        ShellyElevateApplication.mHttpServer = httpServer;
 
         // Button state tracker for single/double/long press detection
         buttonStateTracker = new ButtonStateTracker(this::onButtonAction);
@@ -196,15 +208,6 @@ public class ShellyElevateService extends Service {
         // Input event reader for hardware buttons
         inputEventReader = new InputEventReader(this::onRawButtonEvent);
         inputEventReader.start();
-
-        // Store references for global access (needed by HttpServer, etc.)
-        ShellyElevateApplication.mDeviceHelper = deviceHelper;
-        ShellyElevateApplication.mDeviceSensorManager = sensorManager;
-        ShellyElevateApplication.mMQTTServer = mqttServer;
-        ShellyElevateApplication.mHttpServer = httpServer;
-        ShellyElevateApplication.mMediaHelper = mediaHelper;
-        ShellyElevateApplication.mSharedPreferences = sharedPreferences;
-        ShellyElevateApplication.mApplicationContext = getApplicationContext();
     }
 
     private void registerReceivers() {
@@ -223,7 +226,7 @@ public class ShellyElevateService extends Service {
     }
 
     private void startIdleChecker() {
-        scheduler.scheduleWithFixedDelay(() -> {
+        scheduler.scheduleWithFixedDelay(guarded("Idle checker", () -> {
             if (keepAliveFlag) return;
 
             boolean dimEnabled = sharedPreferences.getBoolean(SP_SCREEN_SAVER_ENABLED, true);
@@ -235,7 +238,21 @@ public class ShellyElevateService extends Service {
             if (idleTime > delay * 1000L && !isDimmed) {
                 dimScreen();
             }
-        }, 1, 1, TimeUnit.SECONDS);
+        }), 1, 1, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Wraps a periodic task so an exception is logged instead of silently cancelling
+     * all future runs of a scheduleWithFixedDelay task.
+     */
+    private static Runnable guarded(String name, Runnable task) {
+        return () -> {
+            try {
+                task.run();
+            } catch (Throwable t) {
+                Log.e(TAG, name + " failed, will retry on next run", t);
+            }
+        };
     }
 
     private void startHttpServer() {
@@ -247,14 +264,14 @@ public class ShellyElevateService extends Service {
         tryStartHttpServer();
 
         // Watchdog to restart if it dies
-        scheduler.scheduleWithFixedDelay(() -> {
+        scheduler.scheduleWithFixedDelay(guarded("HTTP server watchdog", () -> {
             if (sharedPreferences.getBoolean(SP_HTTP_SERVER_ENABLED, true)) {
                 if (httpServer == null || !httpServer.isAlive()) {
                     Log.w(TAG, "HTTP server not alive, restarting...");
                     tryStartHttpServer();
                 }
             }
-        }, 10, 10, TimeUnit.SECONDS);
+        }), 10, 10, TimeUnit.SECONDS);
     }
 
     private void tryStartHttpServer() {
@@ -299,7 +316,7 @@ public class ShellyElevateService extends Service {
         }
 
         // Schedule periodic checks
-        scheduler.scheduleWithFixedDelay(() -> {
+        scheduler.scheduleWithFixedDelay(guarded("App watchdog", () -> {
             if (!sharedPreferences.getBoolean(SP_WATCHDOG_ENABLED, false)) {
                 Log.d(TAG, "Watchdog: disabled, skipping check");
                 return;
@@ -313,7 +330,7 @@ public class ShellyElevateService extends Service {
                 Log.w(TAG, "Watchdog: " + pkg + " is not in foreground, restarting...");
                 launchApp(pkg);
             }
-        }, interval, interval, TimeUnit.SECONDS);
+        }), interval, interval, TimeUnit.SECONDS);
     }
 
     private boolean isAppInForeground(String packageName) {

@@ -77,7 +77,14 @@ public class MQTTServer {
     }
 
     private void schedulePeriodicTempHum() {
-        scheduler.scheduleWithFixedDelay(this::publishTempAndHum, 0, 5, TimeUnit.SECONDS);
+        scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                publishTempAndHum();
+            } catch (Throwable t) {
+                // an escaping exception would cancel the fixed-delay schedule for good
+                Log.e("MQTT", "Periodic temp/humidity publish failed", t);
+            }
+        }, 0, 5, TimeUnit.SECONDS);
     }
 
     public void checkCredsAndConnect() {
