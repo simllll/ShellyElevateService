@@ -188,6 +188,7 @@ public class ShellyElevateService extends Service {
 
         // Other
         if (!sharedPreferences.contains(SP_HTTP_SERVER_ENABLED)) editor.putBoolean(SP_HTTP_SERVER_ENABLED, true);
+        if (!sharedPreferences.contains(SP_HTTP_API_TOKEN)) editor.putString(SP_HTTP_API_TOKEN, "");
         if (!sharedPreferences.contains(SP_MEDIA_ENABLED)) editor.putBoolean(SP_MEDIA_ENABLED, true);
         if (!sharedPreferences.contains(SP_DEBUG_KEYS)) editor.putBoolean(SP_DEBUG_KEYS, false);
 

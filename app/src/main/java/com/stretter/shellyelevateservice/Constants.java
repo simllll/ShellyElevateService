@@ -8,6 +8,11 @@ public class Constants {
 
     //HTTP Server SP Keys
     public static final String SP_HTTP_SERVER_ENABLED = "httpServer";
+    public static final String SP_HTTP_API_TOKEN = "httpApiToken";
+
+    //API token Intent (adb only, see ApiTokenReceiver)
+    public static final String INTENT_SET_API_TOKEN = "com.stretter.shellyelevateservice.SET_API_TOKEN";
+    public static final String INTENT_API_TOKEN_KEY = "token";
 
     //Screen SP Keys
     public static final String SP_AUTOMATIC_BRIGHTNESS = "automaticBrightness";
