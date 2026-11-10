@@ -36,7 +36,7 @@ public class DeviceHelper {
             };
     private String screenBrightnessFile;
     private boolean screenOn = true;
-    private int lastScreenBrightness;
+    private volatile int lastScreenBrightness = -1;
 
     private static final String TAG = "DeviceHelper";
 
@@ -59,7 +59,7 @@ public class DeviceHelper {
     public void setScreenOn(boolean on) {
         screenOn = on;
 
-        setScreenBrightnessInternal(screenOn ? lastScreenBrightness: 0);
+        setScreenBrightnessInternal(screenOn ? Math.max(lastScreenBrightness, 0) : 0);
     }
 
     public boolean getScreenOn() {
@@ -72,7 +72,7 @@ public class DeviceHelper {
     }
 
     private void setScreenBrightnessInternal(int brightness){
-        mMQTTServer.publishScreenBrightness(brightness);
+        if (mMQTTServer != null) mMQTTServer.publishScreenBrightness(brightness);
 
         writeScreenBrightness(brightness);
     }
@@ -103,8 +103,18 @@ public class DeviceHelper {
         writeFileContent(screenBrightnessFile, String.valueOf(brightness));
     }
 
+    /** Last brightness applied via setScreenBrightness, -1 if none yet. */
+    public int getLastScreenBrightness() {
+        return lastScreenBrightness;
+    }
+
     public int getScreenBrightness() {
-        return Integer.parseInt(sanitizeString(readFileContent(screenBrightnessFile)));
+        try {
+            return Integer.parseInt(sanitizeString(readFileContent(screenBrightnessFile)));
+        } catch (NumberFormatException e) {
+            // no readable sysfs node: report what we last applied
+            return Math.max(lastScreenBrightness, 0);
+        }
     }
 
     public boolean getRelay(int num) {
@@ -114,7 +124,9 @@ public class DeviceHelper {
         if (num < 0 || num >= possibleRelayFiles.length) return false;
 
         for (String relayFile : possibleRelayFiles[num]) {
-            relayState |= readFileContent(relayFile).contains("1");
+            // readFileContent returns null when the node does not exist on this model
+            String content = readFileContent(relayFile);
+            relayState |= content != null && content.contains("1");
         }
 
         return relayState;
@@ -129,7 +141,7 @@ public class DeviceHelper {
             writeFileContent(relayFile, state ? "1" : "0");
         }
 
-        if (mMQTTServer.shouldSend()) {
+        if (mMQTTServer != null && mMQTTServer.shouldSend()) {
             mMQTTServer.publishRelay(num, state);
         }
     }

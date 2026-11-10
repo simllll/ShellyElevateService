@@ -107,7 +107,7 @@ public class DeviceSensorManager implements SensorEventListener {
                             || (diff > 0f && sinceLast >= LUX_MAX_INTERVAL_MS);
                 }
 
-                if (shouldPublish && mMQTTServer.shouldSend()) {
+                if (shouldPublish && mMQTTServer != null && mMQTTServer.shouldSend()) {
                     mMQTTServer.publishLux(lastMeasuredLux);
                     lastPublishedLux = lastMeasuredLux;
                     lastLuxPublishTime = now;

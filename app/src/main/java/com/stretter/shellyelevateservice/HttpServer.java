@@ -3,7 +3,13 @@ package com.stretter.shellyelevateservice;
 import static com.stretter.shellyelevateservice.Constants.INTENT_SETTINGS_CHANGED;
 import static com.stretter.shellyelevateservice.Constants.INTENT_SCREEN_SAVER_STARTED;
 import static com.stretter.shellyelevateservice.Constants.INTENT_SCREEN_SAVER_STOPPED;
+import static com.stretter.shellyelevateservice.Constants.SP_HTTP_API_TOKEN;
 import static com.stretter.shellyelevateservice.Constants.SP_HTTP_SERVER_ENABLED;
+import static com.stretter.shellyelevateservice.Constants.SP_MQTT_BROKER;
+import static com.stretter.shellyelevateservice.Constants.SP_MQTT_CLIENTID;
+import static com.stretter.shellyelevateservice.Constants.SP_MQTT_PORT;
+import static com.stretter.shellyelevateservice.Constants.SP_MQTT_USERNAME;
+import static com.stretter.shellyelevateservice.Constants.SP_WATCHDOG_PACKAGE;
 import static com.stretter.shellyelevateservice.ShellyElevateApplication.mApplicationContext;
 import static com.stretter.shellyelevateservice.ShellyElevateApplication.mDeviceHelper;
 import static com.stretter.shellyelevateservice.ShellyElevateApplication.mDeviceSensorManager;
@@ -17,6 +23,8 @@ import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -26,19 +34,36 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import fi.iki.elonen.NanoHTTPD;
 
 public class HttpServer extends NanoHTTPD {
+    /**
+     * Settings that redirect where the device talks to (MQTT broker/identity) or which app it
+     * keeps in front. Without an API token they cannot be changed over the HTTP API at all.
+     */
+    private static final Set<String> PROTECTED_SETTINGS = new HashSet<>(Arrays.asList(
+            SP_MQTT_BROKER, SP_MQTT_PORT, SP_MQTT_USERNAME, SP_MQTT_CLIENTID, SP_WATCHDOG_PACKAGE,
+            SP_HTTP_API_TOKEN));
+
     SettingsParser mSettingsParser = new SettingsParser();
+    private final BroadcastReceiver settingsChangedBroadcastReceiver;
 
     public HttpServer() {
         super(8080);
 
         LocalBroadcastManager localBroadcastManager = LocalBroadcastManager.getInstance(mApplicationContext);
-        BroadcastReceiver settingsChangedBroadcastReceiver = new BroadcastReceiver() {
+        settingsChangedBroadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (mSharedPreferences.getBoolean(SP_HTTP_SERVER_ENABLED, true) && !isAlive()) {
@@ -55,11 +80,48 @@ public class HttpServer extends NanoHTTPD {
         localBroadcastManager.registerReceiver(settingsChangedBroadcastReceiver, new IntentFilter(INTENT_SETTINGS_CHANGED));
     }
 
+    private static Response errorResponse(Response.IStatus status, String message) {
+        JSONObject json = new JSONObject();
+        try {
+            json.put("success", false);
+            json.put("error", message);
+        } catch (JSONException ignored) {}
+        return newFixedLengthResponse(status, "application/json", json.toString());
+    }
+
+    // Asserts are disabled on Android, so a missing body needs a real check
+    private static Response badRequest(String message) {
+        return errorResponse(Response.Status.BAD_REQUEST, message);
+    }
+
+    private static String getApiToken() {
+        return mSharedPreferences.getString(SP_HTTP_API_TOKEN, "");
+    }
+
+    /**
+     * If an API token is configured every request must carry "Authorization: Bearer <token>".
+     */
+    private static boolean isAuthorized(IHTTPSession session) {
+        String token = getApiToken();
+        if (token.isEmpty()) return true;
+
+        String header = session.getHeaders().get("authorization"); // NanoHTTPD lower-cases names
+        if (header == null || !header.regionMatches(true, 0, "Bearer ", 0, 7)) return false;
+        byte[] presented = header.substring(7).trim().getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(presented, token.getBytes(StandardCharsets.UTF_8));
+    }
+
     @Override
     public Response serve(IHTTPSession session) {
         Method method = session.getMethod();
         String uri = session.getUri();
         JSONObject jsonResponse = new JSONObject();
+
+        if (!isAuthorized(session)) {
+            Response response = errorResponse(Response.Status.UNAUTHORIZED, "Missing or invalid API token");
+            response.addHeader("WWW-Authenticate", "Bearer");
+            return response;
+        }
 
         try {
             if (uri.startsWith("/media/")) {
@@ -74,10 +136,28 @@ public class HttpServer extends NanoHTTPD {
                     Map<String, String> files = new HashMap<>();
                     session.parseBody(files);
                     String postData = files.get("postData");
-                    assert postData != null;
+                    if (postData == null || postData.isEmpty()) return badRequest("Missing JSON body (send Content-Type: application/json)");
                     JSONObject jsonObject = new JSONObject(postData);
 
-                    mSettingsParser.setSettings(jsonObject);
+                    if (getApiToken().isEmpty()) {
+                        List<String> rejected = new ArrayList<>();
+                        for (Iterator<String> it = jsonObject.keys(); it.hasNext(); ) {
+                            String key = it.next();
+                            if (PROTECTED_SETTINGS.contains(key) && !mSettingsParser.isUnchanged(key, jsonObject.get(key))) {
+                                rejected.add(key);
+                            }
+                        }
+                        if (!rejected.isEmpty()) {
+                            return errorResponse(Response.Status.FORBIDDEN, "Changing " + String.join(", ", rejected)
+                                    + " over HTTP requires an API token. Set httpApiToken via adb first (see README).");
+                        }
+                    }
+
+                    try {
+                        mSettingsParser.setSettings(jsonObject);
+                    } catch (IllegalArgumentException e) {
+                        return badRequest("Invalid settings: " + e.getMessage());
+                    }
 
                     // Notify components of settings change (triggers MQTT reconnect, etc.)
                     Intent settingsIntent = new Intent(INTENT_SETTINGS_CHANGED);
@@ -115,7 +195,10 @@ public class HttpServer extends NanoHTTPD {
 
                 return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
             }
-        } catch (JSONException | ResponseException | IOException e) {
+        } catch (JSONException e) {
+            Log.e("HttpServer", "Invalid JSON in request", e);
+            return badRequest("Invalid JSON: " + e.getMessage());
+        } catch (ResponseException | IOException e) {
             Log.e("HttpServer", "Error handling request", e);
         }
 
@@ -133,7 +216,7 @@ public class HttpServer extends NanoHTTPD {
                     Map<String, String> files = new HashMap<>();
                     session.parseBody(files);
                     String postData = files.get("postData");
-                    assert postData != null;
+                    if (postData == null || postData.isEmpty()) return badRequest("Missing JSON body");
                     JSONObject jsonObject = new JSONObject(postData);
 
                     Uri mediaUri = Uri.parse(jsonObject.getString("url"));
@@ -189,7 +272,7 @@ public class HttpServer extends NanoHTTPD {
                     Map<String, String> files = new HashMap<>();
                     session.parseBody(files);
                     String postData = files.get("postData");
-                    assert postData != null;
+                    if (postData == null || postData.isEmpty()) return badRequest("Missing JSON body");
                     JSONObject jsonObject = new JSONObject(postData);
 
                     double volume = jsonObject.getDouble("volume");
@@ -220,10 +303,11 @@ public class HttpServer extends NanoHTTPD {
         String uri = session.getUri();
         JSONObject jsonResponse = new JSONObject();
 
-        // Parse query parameters
+        // Parse query parameters. The body can only be read once, so keep it for the POST handlers.
         Map<String, String> params = new HashMap<>();
+        Map<String, String> files = new HashMap<>();
         try {
-            session.parseBody(new HashMap<>());
+            session.parseBody(files);
             params.putAll(session.getParms());
         } catch (IOException | ResponseException e) {
             Log.e("HttpServer", "Invalid parameters", e);
@@ -242,15 +326,14 @@ public class HttpServer extends NanoHTTPD {
                     var num = GetNumParameter(params, -1);
                     if (num == -999) return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid num");
 
-                    Map<String, String> files = new HashMap<>();
-                    session.parseBody(files);
                     String postData = files.get("postData");
-                    assert postData != null;
+                    if (postData == null || postData.isEmpty()) return badRequest("Missing JSON body");
                     JSONObject jsonObject = new JSONObject(postData);
 
                     // num as json body
-                    if (num == -1 && jsonObject.getInt("num")>=0)
-                        num = jsonObject.getInt("num");
+                    if (num == -1)
+                        num = jsonObject.optInt("num", 0);
+                    if (!jsonObject.has("state")) return badRequest("Missing state");
 
                     mDeviceHelper.setRelay(num, jsonObject.getBoolean("state"));
 
@@ -330,14 +413,15 @@ public class HttpServer extends NanoHTTPD {
                             Log.e("HttpServer", "Error rebooting:", e);
                         }
                     } else {
-                        Toast.makeText(mApplicationContext, "Please wait %s seconds before rebooting".replace("%s", String.valueOf(20 - deltaTime)), Toast.LENGTH_LONG).show();
+                        // NanoHTTPD threads have no Looper, Toasts must run on the main thread
+                        String waitMessage = "Please wait %s seconds before rebooting".replace("%s", String.valueOf(20 - deltaTime));
+                        new Handler(Looper.getMainLooper()).post(() ->
+                                Toast.makeText(mApplicationContext, waitMessage, Toast.LENGTH_LONG).show());
                     }
                 }
                 break;
             case "launchApp":
                 if (method.equals(Method.POST)) {
-                    Map<String, String> files = new HashMap<>();
-                    session.parseBody(files);
                     String postData = files.get("postData");
                     if (postData != null) {
                         JSONObject jsonObject = new JSONObject(postData);
@@ -391,6 +475,7 @@ public class HttpServer extends NanoHTTPD {
     }
 
     public void onDestroy() {
+        LocalBroadcastManager.getInstance(mApplicationContext).unregisterReceiver(settingsChangedBroadcastReceiver);
         closeAllConnections();
         stop();
     }

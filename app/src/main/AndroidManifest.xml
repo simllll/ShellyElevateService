@@ -31,6 +31,18 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <!-- restart the service after an app update -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- adb only: DUMP is held by the shell but not grantable to normal apps -->
+        <receiver
+            android:name=".ApiTokenReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.stretter.shellyelevateservice.SET_API_TOKEN" />
             </intent-filter>
         </receiver>
 
