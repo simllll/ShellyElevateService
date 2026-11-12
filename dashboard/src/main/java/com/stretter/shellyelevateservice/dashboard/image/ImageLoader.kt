@@ -102,6 +102,11 @@ class ImageLoader(private val hass: HassClient, cacheDir: File) {
         val docHeight = svg.documentHeight
         if (svg.documentViewBox == null && docWidth > 0 && docHeight > 0) svg.setDocumentViewBox(0f, 0f, docWidth, docHeight)
         val box = svg.documentViewBox ?: return null
+        // A root width/height (e.g. width="64") makes AndroidSVG draw at that size from the top
+        // left of the viewport instead of scaling the viewBox into it: only a corner of the image
+        // landed in a small bitmap. 100% maps the viewBox onto the whole bitmap.
+        svg.setDocumentWidth("100%")
+        svg.setDocumentHeight("100%")
         if (box.width() <= 0f || box.height() <= 0f) return null
         val width = (if (targetWidth > 0) targetWidth else docWidth.toInt()).coerceIn(1, MAX_SVG_PX)
         val height = (width * box.height() / box.width()).toInt().coerceIn(1, MAX_SVG_PX)
