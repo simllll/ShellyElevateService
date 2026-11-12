@@ -73,20 +73,28 @@ class FabCard(private val config: JsonObject) : CardRenderer {
         val active = pressed || entity?.state in POSITIVE_STATES
         val color = if (active) activeColor ?: c.accent else buttonColor ?: c.primary
         val (alignment, dx, dy) = placement()
-        Box(Modifier.fillMaxSize().padding(MARGIN), contentAlignment = alignment) {
+        // The touch target reaches TOUCH_EXTRA beyond the circle (into the 14px margin and over
+        // the content), so a fingertip landing just next to the 49px circle still counts.
+        Box(Modifier.fillMaxSize().padding(MARGIN - TOUCH_EXTRA), contentAlignment = alignment) {
             Box(
                 Modifier
                     .offset(dx, dy)
-                    .size(SIZE)
-                    .alpha(if (disabled) 0.5f else 1f)
-                    .shadow(3.dp, CircleShape)
-                    .background(color, CircleShape)
+                    .size(SIZE + TOUCH_EXTRA * 2)
                     .clickable(interaction, indication = null, enabled = !disabled && action != null) {
                         action?.let { ctx.actions.perform(it, config) }
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                MdiIcon(icon, iconColor ?: Color.White, size = ICON_SIZE)
+                Box(
+                    Modifier
+                        .size(SIZE)
+                        .alpha(if (disabled) 0.5f else 1f)
+                        .shadow(3.dp, CircleShape)
+                        .background(color, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    MdiIcon(icon, iconColor ?: Color.White, size = ICON_SIZE)
+                }
             }
         }
     }
@@ -107,6 +115,7 @@ class FabCard(private val config: JsonObject) : CardRenderer {
         private val SIZE = 49.dp
         private val ICON_SIZE = 21.dp
         private val MARGIN = 14.dp
+        private val TOUCH_EXTRA = 12.dp
         private val POSITIVE_STATES = setOf(
             "true", "on", "open", "active", "detected", "occupied", "unlocked", "home", "above_horizon", "ready",
         )
