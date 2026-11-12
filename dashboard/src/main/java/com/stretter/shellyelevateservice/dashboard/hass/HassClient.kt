@@ -296,6 +296,14 @@ class HassClient(
     }
 
     /**
+     * Sends a message without waiting for a result, for commands HA never answers (e.g.
+     * `browser_mod/update`). Dropped silently when not connected.
+     */
+    fun send(message: JsonObject) {
+        scope.launch(proto) { sendRaw(message) }
+    }
+
+    /**
      * A subscription (`subscribe_events`, `render_template`, `subscribe_trigger`, …) as a cold flow of
      * its `event` payloads. Survives reconnects; collecting starts it, cancelling sends
      * `unsubscribe_events`. Completes with [HassException] if HA rejects the subscription.

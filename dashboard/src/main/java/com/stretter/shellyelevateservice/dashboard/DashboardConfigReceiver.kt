@@ -16,7 +16,8 @@ import android.util.Log
  *     --es url http://192.168.1.20:8123 --es token 'eyJ…' --es dashboard wohnbereich-walldisplay
  * ```
  *
- * Optional: `--es scale 0.75` (see [DashboardSettings.scale]).
+ * Optional: `--es scale 0.75` (see [DashboardSettings.scale]),
+ * `--es browser_id 'walldisplay Eingang'` (see [DashboardSettings.browserId]).
  *
  * A running dashboard (same process) picks the change up immediately.
  */

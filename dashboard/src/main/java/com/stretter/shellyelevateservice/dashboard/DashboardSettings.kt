@@ -23,6 +23,14 @@ class DashboardSettings(context: Context) {
      */
     val scale: Float? get() = prefs.getString(KEY_SCALE, null)?.toFloatOrNull()?.takeIf { it in 0.25f..4f }
 
+    /**
+     * browser_mod browser id this dashboard registers as (default: the id of the web dashboard it
+     * replaces, so automations targeting it keep working). `none` disables browser_mod.
+     */
+    val browserId: String?
+        get() = (prefs.getString(KEY_BROWSER_ID, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_BROWSER_ID)
+            .takeUnless { it.equals("none", ignoreCase = true) }
+
     val hassConfig: HassConfig?
         get() {
             val u = url ?: return null
@@ -36,6 +44,8 @@ class DashboardSettings(context: Context) {
         const val KEY_TOKEN = "token"
         const val KEY_DASHBOARD = "dashboard"
         const val KEY_SCALE = "scale"
-        val ALL_KEYS = listOf(KEY_URL, KEY_TOKEN, KEY_DASHBOARD, KEY_SCALE)
+        const val KEY_BROWSER_ID = "browser_id"
+        const val DEFAULT_BROWSER_ID = "walldisplay Wohnbereich"
+        val ALL_KEYS = listOf(KEY_URL, KEY_TOKEN, KEY_DASHBOARD, KEY_SCALE, KEY_BROWSER_ID)
     }
 }

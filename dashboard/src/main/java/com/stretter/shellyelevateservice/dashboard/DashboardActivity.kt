@@ -53,6 +53,16 @@ class DashboardActivity : ComponentActivity() {
         if (hasFocus) hideSystemBars()
     }
 
+    override fun onStart() {
+        super.onStart()
+        DashboardRuntime.get(this).browserMod.setVisible(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        DashboardRuntime.get(this).browserMod.setVisible(false)
+    }
+
     override fun onResume() {
         super.onResume()
         DashboardRuntime.get(this).hass.reconnectNow()

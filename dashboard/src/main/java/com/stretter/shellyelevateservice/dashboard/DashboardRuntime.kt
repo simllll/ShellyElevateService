@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.compose.runtime.snapshotFlow
 import com.stretter.shellyelevateservice.dashboard.actions.ActionHandler
 import com.stretter.shellyelevateservice.dashboard.actions.Navigator
+import com.stretter.shellyelevateservice.dashboard.browsermod.BrowserMod
 import com.stretter.shellyelevateservice.dashboard.cards.CardCatalog
 import com.stretter.shellyelevateservice.dashboard.cards.CardContext
 import com.stretter.shellyelevateservice.dashboard.cards.CardRegistry
@@ -16,6 +17,7 @@ import com.stretter.shellyelevateservice.dashboard.icons.IconResolver
 import com.stretter.shellyelevateservice.dashboard.image.ImageLoader
 import com.stretter.shellyelevateservice.dashboard.json.asObject
 import com.stretter.shellyelevateservice.dashboard.json.jsonOf
+import com.stretter.shellyelevateservice.dashboard.json.objects
 import com.stretter.shellyelevateservice.dashboard.json.string
 import com.stretter.shellyelevateservice.dashboard.popup.PopupHost
 import com.stretter.shellyelevateservice.dashboard.rows.RowRegistry
@@ -57,6 +59,7 @@ class DashboardRuntime private constructor(context: Context) {
     val popups = PopupHost()
     val navigator = Navigator(popups)
     val actions = ActionHandler(hass, popups, navigator, scope)
+    val browserMod = BrowserMod(hass, actions, scope, ::browserPath)
     val cards = CardRegistry().also(CardCatalog::registerCards)
     val rows = RowRegistry().also(CardCatalog::registerRows)
     val images = ImageLoader(hass, context.cacheDir)
@@ -91,12 +94,16 @@ class DashboardRuntime private constructor(context: Context) {
         scope.launch {
             snapshotFlow { navigator.reloadCounter }.drop(1).collect { loadDashboard(force = true) }
         }
+        scope.launch {
+            snapshotFlow { navigator.viewPath }.collect { browserMod.onPathChanged() }
+        }
     }
 
     private fun applySettings() {
         val config = settings.hassConfig
         if (config == null) _lovelace.value = LovelaceState.NotConfigured
         hass.configure(config)
+        browserMod.setBrowserId(settings.browserId)
         val urlPath = settings.dashboard
         if (dashboardJob != null && urlPath == dashboardPath) return
         val switched = dashboardJob != null
@@ -123,11 +130,21 @@ class DashboardRuntime private constructor(context: Context) {
         if (_lovelace.value !is LovelaceState.Loaded) _lovelace.value = LovelaceState.Loading
         try {
             val config = hass.fetchLovelaceConfig(settings.dashboard, force)
-            if ((_lovelace.value as? LovelaceState.Loaded)?.config != config) _lovelace.value = LovelaceState.Loaded(config)
+            if ((_lovelace.value as? LovelaceState.Loaded)?.config != config) {
+                _lovelace.value = LovelaceState.Loaded(config)
+                browserMod.onPathChanged()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "loading dashboard failed", e)
             if (_lovelace.value !is LovelaceState.Loaded) _lovelace.value = LovelaceState.Error(e.message ?: e.toString())
         }
+    }
+
+    /** `window.location.pathname` of the web dashboard for browser_mod's `path` sensor. */
+    private fun browserPath(): String {
+        val views = (_lovelace.value as? LovelaceState.Loaded)?.config?.objects("views").orEmpty()
+        val view = navigator.viewPath ?: views.firstOrNull()?.string("path") ?: "0"
+        return "/${settings.dashboard ?: "lovelace"}/$view"
     }
 
     /** State translations and default icons, in the HA user's language. */
