@@ -18,6 +18,7 @@ import org.eclipse.paho.mqttv5.common.MqttMessage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
+import com.stretter.shellyelevateservice.DeviceModel;
 import com.stretter.shellyelevateservice.ShellyElevateApplication;
 
 /**
@@ -96,6 +97,16 @@ public class ShellyElevateMQTTCallback {
                 Intent autoIntent = new Intent(INTENT_SET_AUTO_BRIGHTNESS);
                 autoIntent.putExtra(INTENT_AUTO_BRIGHTNESS_KEY, "ON".equalsIgnoreCase(payload.trim()));
                 LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(autoIntent);
+                break;
+            case MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND:
+                try {
+                    int threshold = DeviceModel.clampReflectanceThreshold(
+                            (int) Math.round(Double.parseDouble(payload.trim())));
+                    ShellyElevateApplication.mSharedPreferences.edit().putInt(SP_PROXIMITY_THRESHOLD, threshold).apply();
+                    mMQTTServer.publishProximityThreshold();
+                } catch (NumberFormatException e) {
+                    Log.w("MQTT", "Ignoring invalid proximity threshold: " + payload);
+                }
                 break;
             case MQTT_TOPIC_RESTART_APP_BUTTON:
                 // Broadcast to ShellyElevateService to kill and restart the watchdog app

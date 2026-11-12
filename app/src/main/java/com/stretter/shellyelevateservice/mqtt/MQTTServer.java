@@ -331,6 +331,7 @@ public class MQTTServer {
                     parseTopic(MQTT_TOPIC_RESTART_APP_BUTTON),
                     parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND),
                     parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
+                    parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND),
                     MQTT_TOPIC_HOME_ASSISTANT_STATUS
             };
         }
@@ -344,6 +345,7 @@ public class MQTTServer {
                 parseTopic(MQTT_TOPIC_RESTART_APP_BUTTON),
                 parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND),
                 parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
+                parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND),
                 MQTT_TOPIC_HOME_ASSISTANT_STATUS
         };
     }
@@ -382,6 +384,7 @@ public class MQTTServer {
         if (device.hasProximitySensor) {
             safely("proximity", () -> publishProximity(mDeviceSensorManager.getLastMeasuredDistance()));
         }
+        if (device.proximityIsReflectance()) safely("proximity threshold", this::publishProximityThreshold);
         safely("sleeping", () -> publishSleeping(sleeping));
         Boolean lastPresence = presence;
         if (lastPresence != null) safely("presence", () -> publishPresence(lastPresence));
@@ -540,6 +543,12 @@ public class MQTTServer {
         boolean auto = mSharedPreferences.getBoolean(SP_AUTOMATIC_BRIGHTNESS, true);
         publishInternal(parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_STATE), auto ? "ON" : "OFF", 1, false);
     }
+    public void publishProximityThreshold() {
+        int threshold = DeviceModel.clampReflectanceThreshold(
+                mSharedPreferences.getInt(SP_PROXIMITY_THRESHOLD, DeviceModel.REFLECTANCE_NEAR_DEFAULT));
+        publishInternal(parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD), String.valueOf(threshold), 1, false);
+    }
+
     public void publishProximity(float distance) {
         publishInternal(parseTopic(MQTT_TOPIC_PROXIMITY_SENSOR), String.valueOf(distance), 1, false);
     }
@@ -775,6 +784,22 @@ public class MQTTServer {
         autoBrightnessPayload.put("icon", "mdi:brightness-auto");
         autoBrightnessPayload.put("unique_id", clientId + "_auto_brightness");
         components.put(clientId + "_auto_brightness", autoBrightnessPayload);
+
+        if (DeviceModel.getReportedDevice().proximityIsReflectance()) {
+            JSONObject thresholdPayload = new JSONObject();
+            thresholdPayload.put("p", "number");
+            thresholdPayload.put("name", "Proximity Threshold");
+            thresholdPayload.put("state_topic", parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD));
+            thresholdPayload.put("command_topic", parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND));
+            thresholdPayload.put("min", DeviceModel.REFLECTANCE_NEAR_MIN);
+            thresholdPayload.put("max", DeviceModel.REFLECTANCE_NEAR_MAX);
+            thresholdPayload.put("step", 1);
+            thresholdPayload.put("mode", "box");
+            thresholdPayload.put("entity_category", "config");
+            thresholdPayload.put("icon", "mdi:account-arrow-left");
+            thresholdPayload.put("unique_id", clientId + "_proximity_threshold");
+            components.put(clientId + "_proximity_threshold", thresholdPayload);
+        }
 
         configPayload.put("cmps", components);
 

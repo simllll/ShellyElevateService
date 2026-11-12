@@ -190,6 +190,9 @@ public class ShellyElevateService extends Service {
         if (!sharedPreferences.contains(SP_SCREEN_SAVER_DELAY)) editor.putInt(SP_SCREEN_SAVER_DELAY, 45);
         if (!sharedPreferences.contains(SP_SCREEN_SAVER_MIN_BRIGHTNESS)) editor.putInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness);
         if (!sharedPreferences.contains(SP_WAKE_ON_PROXIMITY)) editor.putBoolean(SP_WAKE_ON_PROXIMITY, false);
+        if (device.proximityIsReflectance() && !sharedPreferences.contains(SP_PROXIMITY_THRESHOLD)) {
+            editor.putInt(SP_PROXIMITY_THRESHOLD, DeviceModel.REFLECTANCE_NEAR_DEFAULT);
+        }
 
         // Watchdog
         if (!sharedPreferences.contains(SP_WATCHDOG_ENABLED)) editor.putBoolean(SP_WATCHDOG_ENABLED, false);
@@ -617,8 +620,10 @@ public class ShellyElevateService extends Service {
         // reset the idle timer and postpone dimming
         boolean near;
         if (device.proximityIsReflectance()) {
-            near = proximity >= DeviceModel.REFLECTANCE_NEAR
-                    || (lastProximityNear && proximity > DeviceModel.REFLECTANCE_FAR);
+            int threshold = DeviceModel.clampReflectanceThreshold(
+                    sharedPreferences.getInt(SP_PROXIMITY_THRESHOLD, DeviceModel.REFLECTANCE_NEAR_DEFAULT));
+            near = proximity >= threshold
+                    || (lastProximityNear && proximity > DeviceModel.reflectanceFar(threshold));
         } else {
             near = proximity < maxRange - 0.5f;
         }

@@ -160,8 +160,10 @@ had (`WRITE_SETTINGS`, `WAKE_LOCK`):
 - Light and proximity come from the Android sensors (their raw input nodes are not readable).
   The proximity sensor reports raw infrared **reflectance**, not a distance (higher = closer:
   ~20 at rest, 55–80 with a person standing in front of the panel, 100–6000 with a hand close to
-  it; Android's `maxRange` of 9 is meaningless). *Near* is ≥ 40 and *far* ≤ 30 (hysteresis), which
-  drives `presence` and `wakeOnProximity`. It only reacts to someone directly in front of the
+  it; Android's `maxRange` of 9 is meaningless). *Near* is ≥ `proximityThreshold` (default 40, 25–500;
+  also the *Proximity Threshold* number entity in HA) and *far* ≤ ¾ of it (hysteresis), which
+  drives `presence` and `wakeOnProximity`. Watch the proximity sensor while standing in front of
+  the panel to pick a value above the resting level (it may be higher in daylight). It only reacts to someone directly in front of the
   panel, not across a room. Its value is published at most every 5 s plus on every near/far change (the
   sensor itself reports several values per second), without a unit.
 - **Relays**: relay 1 and 2 are GPIO 114 and 115 (`/sys/class/gpio/gpio11x/value`, writable by
@@ -433,6 +435,7 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 | `relay_command`, `relay_command_1` | `ON` / `OFF` | Control relay 1 / relay 2 |
 | `bri_set` | `0`-`255` | Set screen brightness (turns automatic brightness off) |
 | `auto_bri_set` | `ON` / `OFF` | Turn automatic brightness on/off |
+| `proximity_threshold_set` | `25`-`500` | Near threshold of the NSPanel Pro proximity sensor (state topic `proximity_threshold`) |
 | `sleep` | any | Dim screen |
 | `wake` | any | Wake screen |
 | `reboot` | any | Reboot device |
@@ -454,6 +457,7 @@ ShellyElevate publishes MQTT discovery config to `homeassistant/device/<client-i
 - Presence binary sensor (occupancy, if available)
 - Screen Brightness number (slider 0-255)
 - Auto Brightness switch
+- Proximity Threshold number (NSPanel Pro)
 - Sleeping binary sensor
 - Relay switch(es) (if available)
 - Button events (for automations)
