@@ -4,7 +4,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -43,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -295,33 +295,32 @@ class HistoryGraphCard(private val config: JsonObject) : CardRenderer {
             HistoryData.valueTicks(lo, hi)
         }
         Column(Modifier.fillMaxWidth()) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val height = maxOf(maxWidth / 2, 200.dp).coerceAtMost(350.dp)
-                Canvas(Modifier.fillMaxWidth().height(height)) {
-                    val labels = ticks.map { measurer.measure(f.formatNumber(it, 2), textStyle) }
-                    val margin = 5.dp.toPx()
-                    val plotLeft = (labels.maxOfOrNull { it.size.width } ?: 0) + margin
-                    val plotRight = size.width - 1.dp.toPx()
-                    val plotTop = 15.dp.toPx()
-                    val plotBottom = size.height - 20.dp.toPx()
-                    val lo = ticks.firstOrNull() ?: 0.0
-                    val hi = ticks.lastOrNull() ?: 1.0
-                    fun y(v: Double) = (plotBottom - (v - lo) / (hi - lo).coerceAtLeast(1e-9) * (plotBottom - plotTop)).toFloat()
-                    ticks.forEachIndexed { i, v ->
-                        val yy = y(v)
-                        drawLine(c.divider, Offset(plotLeft, yy), Offset(plotRight, yy), 1f)
-                        val l = labels[i]
-                        drawText(l, topLeft = Offset(plotLeft - margin - l.size.width, yy - l.size.height / 2f))
-                    }
-                    if (chart.unit.isNotEmpty()) {
-                        val unit = measurer.measure(chart.unit, textStyle)
-                        drawText(unit, topLeft = Offset(plotLeft, (plotTop - 2.dp.toPx() - unit.size.height).coerceAtLeast(0f)))
-                    }
-                    drawTimeAxis(measurer, textStyle, c.divider, start, end, plotLeft, plotRight, plotBottom, locale, ticks = false, splitTop = plotTop)
-                    val width = plotRight - plotLeft
-                    clipRect(plotLeft, 0f, plotRight, size.height) {
-                        for (s in chart.series) drawStepLine(s, start, end, plotLeft, width, ::y)
-                    }
+            // Height max(width / 2, 200) capped at 350 (`_getDefaultHeight`, --chart-max-height),
+            // via a layout modifier so intrinsic measurement works.
+            Canvas(Modifier.fillMaxWidth().chartHeight()) {
+                val labels = ticks.map { measurer.measure(f.formatNumber(it, 2), textStyle) }
+                val margin = 5.dp.toPx()
+                val plotLeft = (labels.maxOfOrNull { it.size.width } ?: 0) + margin
+                val plotRight = size.width - 1.dp.toPx()
+                val plotTop = 15.dp.toPx()
+                val plotBottom = size.height - 20.dp.toPx()
+                val lo = ticks.firstOrNull() ?: 0.0
+                val hi = ticks.lastOrNull() ?: 1.0
+                fun y(v: Double) = (plotBottom - (v - lo) / (hi - lo).coerceAtLeast(1e-9) * (plotBottom - plotTop)).toFloat()
+                ticks.forEachIndexed { i, v ->
+                    val yy = y(v)
+                    drawLine(c.divider, Offset(plotLeft, yy), Offset(plotRight, yy), 1f)
+                    val l = labels[i]
+                    drawText(l, topLeft = Offset(plotLeft - margin - l.size.width, yy - l.size.height / 2f))
+                }
+                if (chart.unit.isNotEmpty()) {
+                    val unit = measurer.measure(chart.unit, textStyle)
+                    drawText(unit, topLeft = Offset(plotLeft, (plotTop - 2.dp.toPx() - unit.size.height).coerceAtLeast(0f)))
+                }
+                drawTimeAxis(measurer, textStyle, c.divider, start, end, plotLeft, plotRight, plotBottom, locale, ticks = false, splitTop = plotTop)
+                val width = plotRight - plotLeft
+                clipRect(plotLeft, 0f, plotRight, size.height) {
+                    for (s in chart.series) drawStepLine(s, start, end, plotLeft, width, ::y)
                 }
             }
             if (showNames) {
@@ -410,4 +409,12 @@ class HistoryGraphCard(private val config: JsonObject) : CardRenderer {
         const val GRID_BOTTOM = 30
         const val REFRESH_MS = 5 * 60_000L
     }
+}
+
+private fun Modifier.chartHeight(): Modifier = layout { measurable, constraints ->
+    val width = if (constraints.hasBoundedWidth) constraints.maxWidth else constraints.minWidth
+    val height = maxOf(width / 2, 200.dp.roundToPx()).coerceAtMost(350.dp.roundToPx())
+        .coerceIn(constraints.minHeight, if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE)
+    val placeable = measurable.measure(Constraints.fixed(width, height))
+    layout(width, height) { placeable.place(0, 0) }
 }
