@@ -721,6 +721,10 @@ public class ShellyElevateService extends Service {
         // Map hardware key codes 59-62 to button numbers 1-4
         int buttonNumber = keyCodeToButtonNumber(keyCode);
         if (buttonNumber > 0) {
+            // Instant pill on the native dashboard; its label is refined by single/double/long
+            if (pressed) {
+                sendDashboardButtonFeedback(buttonNumber, ButtonFeedbackContract.EVENT_DOWN);
+            }
             // Route to ButtonStateTracker for single/double/long detection
             buttonStateTracker.onButtonEvent(buttonNumber, pressed);
         } else if (debugKeys && mqttServer != null && mqttServer.shouldSend()) {
@@ -753,7 +757,7 @@ public class ShellyElevateService extends Service {
         if (mqttServer != null && mqttServer.shouldSend()) {
             mqttServer.publishButtonEvent(buttonNumber, eventType.getValue());
         }
-        sendDashboardButtonFeedback(buttonNumber, eventType);
+        sendDashboardButtonFeedback(buttonNumber, eventType.getValue());
     }
 
     /**
@@ -761,12 +765,12 @@ public class ShellyElevateService extends Service {
      * Restricted to our package; the dashboard registers a not-exported receiver only while it is
      * started, so without a running dashboard this is a no-op.
      */
-    private void sendDashboardButtonFeedback(int buttonNumber, ButtonStateTracker.EventType eventType) {
+    private void sendDashboardButtonFeedback(int buttonNumber, String event) {
         try {
             Intent intent = new Intent(ButtonFeedbackContract.ACTION)
                     .setPackage(getPackageName())
                     .putExtra(ButtonFeedbackContract.EXTRA_BUTTON, buttonNumber)
-                    .putExtra(ButtonFeedbackContract.EXTRA_EVENT, eventType.getValue());
+                    .putExtra(ButtonFeedbackContract.EXTRA_EVENT, event);
             sendBroadcast(intent);
         } catch (Exception e) {
             Log.w(TAG, "Could not send button feedback to dashboard: " + e.getMessage());

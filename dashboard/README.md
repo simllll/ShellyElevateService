@@ -148,12 +148,13 @@ stopped or the screen is off. Video URLs play their audio only.
 
 HA automations stay the source of truth for the four hardware buttons (MQTT `button_event`,
 browser_mod popups). For instant feedback the service also sends a package-restricted broadcast
-(`ButtonFeedbackContract.ACTION`, extras `button` 1–4 and `event` `single`/`double`/`long`) to a
+(`ButtonFeedbackContract.ACTION`, extras `button` 1–4 and `event` `down`/`single`/`double`/`long`) to a
 not-exported receiver the dashboard registers only while the activity is started (no effect, and
-no process start, when the dashboard is not running). The dashboard shows a small pill at the top
-center ("Taste 2", "Taste 2 · 2×", "Taste 2 · lang") for 1.5 s, or until the next browser_mod
-popup arrives. A single press is reported after the 300 ms double-click window, a long press after
-500 ms.
+no process start, when the dashboard is not running). The service sends `event` `down` on the raw
+key-down, so a small pill ("Taste 2") appears at the top center immediately; when the action is
+detected (single after the 300 ms double-click window, long after 500 ms) the same pill is
+relabeled ("Taste 2 · 2×", "Taste 2 · lang"). It disappears 1.5 s after the button's last event,
+or when the next browser_mod popup arrives.
 
 ## Adding a card type
 

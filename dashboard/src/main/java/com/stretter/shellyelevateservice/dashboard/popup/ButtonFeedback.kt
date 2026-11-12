@@ -37,7 +37,8 @@ import kotlinx.coroutines.delay
 
 /**
  * Broadcast contract between the background service (main process) and the dashboard: the
- * service sends [ACTION] restricted to our package for every detected hardware button action.
+ * service sends [ACTION] restricted to our package on every raw key-down ([EVENT_DOWN]) and for
+ * every detected hardware button action (single/double/long).
  * The dashboard only registers its receiver while the activity is started, so nothing happens
  * (and no process is started) when the dashboard is not running.
  */
@@ -45,14 +46,18 @@ object ButtonFeedbackContract {
     const val ACTION = "com.stretter.shellyelevateservice.dashboard.BUTTON_FEEDBACK"
     /** Button number 1–4. */
     const val EXTRA_BUTTON = "button"
-    /** `single`, `double` or `long` (ButtonStateTracker.EventType values). */
+    /** [EVENT_DOWN], or `single`, `double`, `long` (ButtonStateTracker.EventType values). */
     const val EXTRA_EVENT = "event"
+    /** The raw key-down, sent at once, before single/double/long is known. */
+    const val EVENT_DOWN = "down"
 }
 
 /**
- * Immediate local feedback for the hardware buttons: a small pill at the top center
- * ("Taste 2"). HA automations stay the source of truth (they still show their browser_mod
- * popups); the pill disappears after [DURATION_MS] or as soon as a browser_mod popup arrives.
+ * Immediate local feedback for the hardware buttons: a small pill at the top center. It appears
+ * on the raw key-down ("Taste 2") and its label is updated in place when the action is detected
+ * ("Taste 2 · 2×", "Taste 2 · lang"). HA automations stay the source of truth (they still show
+ * their browser_mod popups); the pill disappears [DURATION_MS] after the last event of the
+ * button or as soon as a browser_mod popup arrives.
  */
 @Stable
 class ButtonFeedback(private val popups: PopupHost) {
@@ -67,7 +72,13 @@ class ButtonFeedback(private val popups: PopupHost) {
 
     fun show(button: Int, event: String) {
         if (button !in 1..4) return
-        current = Press(++ids, button, event, popups.browserModPopupGeneration)
+        val shown = current
+        current = if (event != ButtonFeedbackContract.EVENT_DOWN && shown != null && shown.button == button) {
+            // The action of the press already shown: relabel it (a popup that arrived meanwhile keeps it hidden).
+            Press(++ids, button, event, shown.popupGeneration)
+        } else {
+            Press(++ids, button, event, popups.browserModPopupGeneration)
+        }
     }
 
     fun dismiss() {
