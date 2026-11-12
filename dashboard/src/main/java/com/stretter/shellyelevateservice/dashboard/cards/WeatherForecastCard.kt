@@ -2,7 +2,6 @@ package com.stretter.shellyelevateservice.dashboard.cards
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +22,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -99,18 +100,23 @@ class WeatherForecastCard(private val config: JsonObject) : CardRenderer {
         val showWeather = items == null || showCurrent
         val name = config.string("name") ?: ctx.entityDisplayName(entity, entityId)
 
-        HaCard(modifier.haActions(ctx, config)) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val size = WeatherSize.of(maxWidth, if (constraints.hasBoundedHeight) maxHeight else null)
-                Column(
-                    Modifier.fillMaxSize().padding(vertical = 16.dp),
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    if (showWeather) CurrentWeather(ctx, entity, name, items, size)
-                    if (items != null) {
-                        if (showWeather) Spacer(Modifier.height(if (size.short) 12.dp else if (size.width == 3) 8.dp else 16.dp))
-                        ForecastRow(ctx, items, forecastType == "hourly", forecastType == "twice_daily", size)
-                    }
+        // Size classes from the laid-out card size (like the ResizeController, one frame late);
+        // no BoxWithConstraints so the grid can measure the card intrinsically.
+        val density = LocalDensity.current
+        var size by remember { mutableStateOf(WeatherSize(0, false)) }
+        HaCard(
+            modifier
+                .haActions(ctx, config)
+                .onSizeChanged { px -> size = with(density) { WeatherSize.of(px.width.toDp(), px.height.toDp()) } },
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(vertical = 16.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                if (showWeather) CurrentWeather(ctx, entity, name, items, size)
+                if (items != null) {
+                    if (showWeather) Spacer(Modifier.height(if (size.short) 12.dp else if (size.width == 3) 8.dp else 16.dp))
+                    ForecastRow(ctx, items, forecastType == "hourly", forecastType == "twice_daily", size)
                 }
             }
         }
