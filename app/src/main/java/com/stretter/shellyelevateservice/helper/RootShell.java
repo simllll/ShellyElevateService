@@ -1,9 +1,11 @@
 package com.stretter.shellyelevateservice.helper;
 
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.StructStat;
 import android.util.Log;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -28,10 +30,13 @@ import java.util.regex.Pattern;
  * marked unavailable after {@link #MAX_START_ATTEMPTS} failed starts and every command runs its
  * fallback instead. A shell that dies later is restarted on the next command.
  *
+ * Only a setuid-root su can work for an app: a plain root-owned su binary (as on the NSPanel
+ * Pro userdebug build, -rwxr-xr-x) runs with the app's uid, so it is not even tried.
+ *
  * Plain {@code su} without arguments is used on purpose: AOSP su does not know {@code -c}, but
  * every su variant (AOSP, SuperSU, Magisk) reads commands from stdin.
  */
-public class RootShell {
+public class RootShell implements BacklightStrategy {
     private static final String TAG = "RootShell";
 
     static final String[] SU_PATHS = {
@@ -78,6 +83,25 @@ public class RootShell {
         return null;
     }
 
+    private static final int S_ISUID = 04000;
+
+    /** True for a root-owned binary with the setuid bit, the only kind an app uid can use. */
+    static boolean isSetuidRoot(int mode, int ownerUid) {
+        return ownerUid == 0 && (mode & S_ISUID) != 0;
+    }
+
+    /** First su binary an app can actually become root with, or null. */
+    private static String findUsableSu() {
+        return findSu(path -> {
+            try {
+                StructStat st = Os.stat(path);
+                return isSetuidRoot(st.st_mode, st.st_uid);
+            } catch (ErrnoException e) {
+                return false;
+            }
+        });
+    }
+
     static boolean isSafePath(String path) {
         return path != null && SAFE_PATH.matcher(path).matches() && !path.contains("..");
     }
@@ -113,9 +137,15 @@ public class RootShell {
         return available;
     }
 
-    /** True if an su binary exists at all (cheap, no process started). */
-    public static boolean hasSuBinary() {
-        return findSu(path -> new File(path).exists()) != null;
+    @Override
+    public String name() {
+        return "root shell";
+    }
+
+    /** A setuid-root su exists and has not failed yet (cheap, no process started). */
+    @Override
+    public boolean isUsable() {
+        return !Boolean.FALSE.equals(available) && findUsableSu() != null;
     }
 
     /** Starts the shell in the background so the first real command does not wait for it. */
@@ -123,6 +153,7 @@ public class RootShell {
         submit(this::ensureStarted);
     }
 
+    @Override
     public void setBacklight(String path, int brightness, Runnable fallback) {
         runOrElse(backlightCommand(path, brightness), fallback);
     }
@@ -159,7 +190,7 @@ public class RootShell {
      */
     public InputStream openStream(String path) {
         if (Boolean.FALSE.equals(available) || !isSafePath(path)) return null;
-        String su = findSu(p -> new File(p).exists());
+        String su = findUsableSu();
         if (su == null) return null;
         try {
             Process p = new ProcessBuilder(su).start();
@@ -213,9 +244,9 @@ public class RootShell {
         stopProcess();
         if (Boolean.FALSE.equals(available)) return false;
 
-        String su = findSu(path -> new File(path).exists());
+        String su = findUsableSu();
         if (su == null) {
-            Log.i(TAG, "No su binary found, root features disabled");
+            Log.i(TAG, "No setuid-root su found, root features disabled");
             available = false;
             return false;
         }

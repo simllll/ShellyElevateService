@@ -36,25 +36,31 @@ public class DeviceHelper {
             };
     private String screenBrightnessFile;
     private final DeviceModel device = DeviceModel.getReportedDevice();
-    // Root-only backlight (NSPanel Pro): written through the persistent su shell
+    // Root shell, only on devices with root-only nodes and a setuid su (null otherwise)
     private final RootShell rootShell;
+    // Writer for a root-only backlight node; null = Settings API (NSPanel Pro without root)
+    private volatile BacklightStrategy backlightStrategy;
     private boolean screenOn = true;
     private volatile int lastScreenBrightness = -1;
 
     private static final String TAG = "DeviceHelper";
 
     public DeviceHelper() {
-        if (device.needsRootForBacklight) {
-            rootShell = RootShell.get();
-            rootShell.prepareAsync();
-        } else {
-            rootShell = null;
+        RootShell root = null;
+        if (device.backlightRootOnly) {
+            RootShell candidate = RootShell.get();
+            if (candidate.isUsable()) {
+                root = candidate;
+                root.prepareAsync();
+                backlightStrategy = root;
+            }
         }
+        rootShell = root;
 
         if (device.backlightPath != null) {
             screenBrightnessFile = device.backlightPath;
             Log.i(TAG, "Using brightness file of " + device.name() + ": " + screenBrightnessFile
-                    + (device.needsRootForBacklight ? " (via root shell)" : ""));
+                    + (device.backlightRootOnly ? " via " + (backlightStrategy != null ? backlightStrategy.name() : "Settings API") : ""));
             return;
         }
 
@@ -99,12 +105,18 @@ public class DeviceHelper {
 
         Log.d(TAG, "Set brightness to: " + brightness);
 
-        if (rootShell != null) {
-            // Only the sysfs node: Android's own brightness (Settings) would ramp the backlight
-            // through the lights HAL and could overwrite a 0 ("sleep"). Without root the
-            // Settings API is the only way left (Android clamps its minimum, so never fully dark).
-            final int value = brightness;
-            rootShell.setBacklight(screenBrightnessFile, value, () -> writeBrightnessSetting(value));
+        if (device.backlightRootOnly) {
+            BacklightStrategy strategy = backlightStrategy;
+            if (strategy != null && strategy.isUsable()) {
+                // Only the sysfs node: Android's own brightness (Settings) would ramp the
+                // backlight through the lights HAL and could overwrite a 0 ("sleep")
+                final int value = brightness;
+                strategy.setBacklight(screenBrightnessFile, value, () -> writeBrightnessSetting(value));
+            } else {
+                // Settings API only (on the NSPanel Pro 0 means sysfs 10: dimmest, not off);
+                // the node itself is not writable, writing it would only log errors
+                writeBrightnessSetting(brightness);
+            }
             return;
         }
 
@@ -138,7 +150,7 @@ public class DeviceHelper {
      * "reboot" itself), falling back to the plain command.
      */
     public void reboot() throws IOException {
-        if (rootShell != null && !Boolean.FALSE.equals(rootShell.isAvailable())) {
+        if (rootShell != null && rootShell.isUsable()) {
             rootShell.reboot(DeviceHelper::execReboot);
             return;
         }
@@ -155,7 +167,7 @@ public class DeviceHelper {
 
     /** Force-stops an app (root shell where available, "am force-stop" as app uid otherwise). */
     public void forceStopApp(String packageName) throws IOException {
-        if (rootShell != null && !Boolean.FALSE.equals(rootShell.isAvailable())) {
+        if (rootShell != null && rootShell.isUsable()) {
             try {
                 rootShell.forceStop(packageName, () -> execForceStop(packageName));
                 return;
@@ -174,7 +186,16 @@ public class DeviceHelper {
         }
     }
 
-    /** Root shell used for root-only hardware nodes, null on devices that do not need one. */
+    /**
+     * Plugs in a writer for a root-only backlight node (e.g. a future adb-shell helper that can
+     * switch the NSPanel Pro screen fully off); null returns to the Settings API.
+     */
+    public void setBacklightStrategy(BacklightStrategy strategy) {
+        backlightStrategy = strategy;
+        Log.i(TAG, "Backlight strategy: " + (strategy != null ? strategy.name() : "Settings API"));
+    }
+
+    /** Root shell for root-only hardware nodes, null if the device needs none or su is unusable. */
     public RootShell getRootShell() {
         return rootShell;
     }

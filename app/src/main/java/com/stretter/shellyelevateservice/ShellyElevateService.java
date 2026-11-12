@@ -62,6 +62,7 @@ public class ShellyElevateService extends Service {
     private HttpServer httpServer;
     private MediaHelper mediaHelper;
     private InputEventReader inputEventReader;
+    private TouchOverlay touchOverlay;
     private ButtonStateTracker buttonStateTracker;
 
     // Idle/dim management
@@ -235,6 +236,12 @@ public class ShellyElevateService extends Service {
         // root shell on devices that have one)
         inputEventReader = new InputEventReader(this::onRawButtonEvent, this::onTouchEvent, deviceHelper.getRootShell());
         inputEventReader.start();
+
+        // Root-only /dev/input and no usable root: detect touches with an overlay instead
+        if (device.backlightRootOnly && deviceHelper.getRootShell() == null) {
+            touchOverlay = new TouchOverlay(this, this::onTouchEvent);
+            touchOverlay.start();
+        }
     }
 
     private void registerReceivers() {
@@ -766,6 +773,9 @@ public class ShellyElevateService extends Service {
         // Stop input reader
         if (inputEventReader != null) {
             inputEventReader.stop();
+        }
+        if (touchOverlay != null) {
+            touchOverlay.stop();
         }
 
         // Cleanup button state tracker

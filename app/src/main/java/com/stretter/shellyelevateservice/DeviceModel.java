@@ -29,8 +29,9 @@ public enum DeviceModel {
     // Sonoff NSPanel Pro (86 type, EU). Generic Rockchip PX30 board name, rooted userdebug build.
     // No relays, no temperature/humidity sensor, no hardware buttons (adc-keys exist in the
     // kernel but are not wired on the 86 model; they are only published with debugKeys).
-    // Proximity and light are regular Android sensors. The backlight sysfs node is only
-    // writable by root, "sleep" switches it off completely (screenSaverMinBrightness 0).
+    // Proximity and light are regular Android sensors. The backlight sysfs node is root-only and
+    // su is not setuid, so brightness goes through the Settings API, whose 0 only reaches sysfs
+    // 10 (dimmest, not off). screenSaverMinBrightness 0 = as dark as the active strategy allows.
     // TODO: the kernel exports GPIO 113/114/115 (purpose unknown, maybe relay board or LEDs).
     //  Never drive them until their function is known.
     NSPANEL_PRO("px30_evb", "NSPanel Pro", "NSPanel Pro 86", "Sonoff", "Sonoff NSPanel Pro",
@@ -54,8 +55,12 @@ public enum DeviceModel {
     public final int inputs;
     /** Backlight sysfs node, null = probe the known Shelly paths. */
     public final String backlightPath;
-    /** The backlight node is root-only: written through the su shell (RootShell). */
-    public final boolean needsRootForBacklight;
+    /**
+     * The backlight node (and /dev/input) is not app-writable/readable: brightness goes through
+     * the Settings API unless a BacklightStrategy (e.g. a setuid su) is usable, and touches are
+     * detected with an overlay (TouchOverlay).
+     */
+    public final boolean backlightRootOnly;
     /** Publish a presence (occupancy) binary sensor derived from the proximity sensor. */
     public final boolean presenceFromProximity;
     /** Default for screenSaverMinBrightness (brightness while dimmed / asleep). */
@@ -73,16 +78,16 @@ public enum DeviceModel {
     // Devices without a temperature/humidity sensor
     DeviceModel(String model, String friendlyName, String modelName, String manufacturer, String deviceName,
                 boolean hasProximitySensor, boolean hasLightSensor, boolean hasTempHumSensor, int buttons, int inputs,
-                String backlightPath, boolean needsRootForBacklight, boolean presenceFromProximity,
+                String backlightPath, boolean backlightRootOnly, boolean presenceFromProximity,
                 int defaultScreenSaverMinBrightness, int screenWidthDp, int screenHeightDp) {
         this(model, friendlyName, modelName, manufacturer, deviceName, hasProximitySensor, hasLightSensor,
-                hasTempHumSensor, buttons, inputs, backlightPath, needsRootForBacklight, presenceFromProximity,
+                hasTempHumSensor, buttons, inputs, backlightPath, backlightRootOnly, presenceFromProximity,
                 defaultScreenSaverMinBrightness, screenWidthDp, screenHeightDp, 0d, 0d);
     }
 
     DeviceModel(String model, String friendlyName, String modelName, String manufacturer, String deviceName,
                 boolean hasProximitySensor, boolean hasLightSensor, boolean hasTempHumSensor, int buttons, int inputs,
-                String backlightPath, boolean needsRootForBacklight, boolean presenceFromProximity,
+                String backlightPath, boolean backlightRootOnly, boolean presenceFromProximity,
                 int defaultScreenSaverMinBrightness, int screenWidthDp, int screenHeightDp,
                 double temperatureOffset, double humidityOffset) {
         this.model = model;
@@ -98,7 +103,7 @@ public enum DeviceModel {
         this.buttons = buttons;
         this.inputs = inputs;
         this.backlightPath = backlightPath;
-        this.needsRootForBacklight = needsRootForBacklight;
+        this.backlightRootOnly = backlightRootOnly;
         this.presenceFromProximity = presenceFromProximity;
         this.defaultScreenSaverMinBrightness = defaultScreenSaverMinBrightness;
         this.screenWidthDp = screenWidthDp;

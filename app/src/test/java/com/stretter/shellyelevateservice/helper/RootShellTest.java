@@ -59,6 +59,13 @@ public class RootShellTest {
     }
 
     @Test
+    public void onlySetuidRootSuIsUsable() {
+        assertTrue(RootShell.isSetuidRoot(0104755, 0));   // -rwsr-xr-x root
+        assertFalse(RootShell.isSetuidRoot(0100755, 0));  // -rwxr-xr-x root (NSPanel Pro)
+        assertFalse(RootShell.isSetuidRoot(0104755, 2000)); // setuid, but not root-owned
+    }
+
+    @Test
     public void findsFirstExistingSu() {
         assertEquals("/system/xbin/su", RootShell.findSu(p -> true));
         assertEquals("/sbin/su", RootShell.findSu(p -> p.equals("/sbin/su") || p.equals("/su/bin/su")));

@@ -52,7 +52,7 @@ public class DeviceModelTest {
         assertTrue(m.hasProximitySensor);
         assertTrue(m.hasLightSensor);
         assertTrue(m.presenceFromProximity);
-        assertTrue(m.needsRootForBacklight);
+        assertTrue(m.backlightRootOnly);
         assertEquals("/sys/class/backlight/backlight/brightness", m.backlightPath);
         assertEquals(0, m.defaultScreenSaverMinBrightness);
         assertEquals(480, m.screenWidthDp);
@@ -70,7 +70,7 @@ public class DeviceModelTest {
             assertTrue(m.hasLightSensor);
             assertEquals(1, m.inputs);
             assertNull(m.backlightPath);
-            assertFalse(m.needsRootForBacklight);
+            assertFalse(m.backlightRootOnly);
             assertFalse(m.presenceFromProximity);
             assertEquals(10, m.defaultScreenSaverMinBrightness);
         }

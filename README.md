@@ -139,18 +139,19 @@ After reboot, ShellyElevate will start automatically and launch the Home Assista
 ShellyElevate replaces the closed-source *NSPanel Pro Tools* app (`com.seaky.nspanelpro.tools`):
 one app provides MQTT sensors, sleep/wake, brightness, watchdog and (optionally) the native dashboard.
 
-The NSPanel Pro runs a rooted Android 8.1 userdebug build (`/system/xbin/su`, SELinux permissive,
-480×480 screen). Its backlight (`/sys/class/backlight/backlight/brightness`) and its `/dev/input`
-nodes are root-only, so ShellyElevate keeps **one persistent `su` shell** and writes the backlight,
-reads the touchscreen and reboots through it.
+The NSPanel Pro runs an Android 8.1 userdebug build (480×480 screen). Its backlight
+(`/sys/class/backlight/backlight/brightness`) and its `/dev/input` nodes are root-only, and the
+`/system/xbin/su` it ships is **not setuid**, so apps cannot use it. ShellyElevate therefore works
+without root:
 
-- **With working `su`:** sleep switches the backlight off completely (`screenSaverMinBrightness`
-  defaults to `0` on the NSPanel), brightness and auto-brightness write the backlight directly,
-  touches wake the screen, `reboot` and `restart_app` work.
-- **Without `su`** (missing, or the AOSP `su` refuses app uids – check `adb logcat -s RootShell`):
-  brightness falls back to the Android Settings API (needs `WRITE_SETTINGS`; Android never goes
-  fully dark there), touch wake and reboot are not available. Proximity, light, MQTT, HTTP and
-  watchdog work either way.
+- **Brightness / sleep** go through the Android Settings API (needs `WRITE_SETTINGS`). Settings 0
+  only reaches backlight 10, so "sleep" (`screenSaverMinBrightness`, default `0` on the NSPanel)
+  is the dimmest level, not a black screen. Switching the screen fully off needs a privileged
+  writer; the backlight writer is pluggable (`BacklightStrategy`) for that.
+- **Touch wake / idle timer** use a 1 px overlay that sees every touch-down (needs
+  `SYSTEM_ALERT_WINDOW`, see setup). Without it the screen dims after the timeout even while in use.
+- If a **setuid-root `su`** is present (e.g. Magisk), it is used automatically: backlight 0 = off,
+  touches read from `/dev/input`, `reboot` and `restart_app` via root.
 
 ### Setup
 
@@ -164,6 +165,7 @@ adb shell pm disable-user --user 0 com.seaky.nspanelpro.tools   # or: adb uninst
 # 2. Install and grant
 adb install ./shellyelevateservice.apk
 adb shell appops set com.stretter.shellyelevateservice WRITE_SETTINGS allow
+adb shell appops set com.stretter.shellyelevateservice SYSTEM_ALERT_WINDOW allow   # touch detection
 adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
 
 # 3. Android must not turn the screen off or change the brightness on its own
@@ -174,9 +176,8 @@ adb shell settings put system screen_brightness_mode 0
 adb shell am start-foreground-service com.stretter.shellyelevateservice/.ShellyElevateService
 ```
 
-If a root manager (Magisk/SuperSU) is installed, allow root for ShellyElevate when it asks. Verify
-with `adb logcat -s RootShell DeviceHelper`: `Root shell started (/system/xbin/su)` means root
-works; `su did not answer` / `Root shell unavailable` means the Settings fallback is used.
+`adb logcat -s DeviceHelper TouchOverlay RootShell` shows the active backlight writer
+(`via Settings API` or `via root shell`) and whether the touch overlay is active.
 
 ### Migrating from NSPanel Pro Tools
 
@@ -192,7 +193,7 @@ Assistant (Settings → Devices → MQTT) and update automations to the new enti
 | `sleep` command | `button.…_sleep` (or `POST /device/sleep`) |
 | screen on/off state | `binary_sensor.…_sleeping` |
 | brightness | `number.…_screen_brightness` + `switch.…_auto_brightness` |
-| `reboot` command | `button.…_reboot` (via root) |
+| `reboot` command | `button.…_reboot` (needs a setuid-root `su`) |
 | `default_app` / `launcher` | watchdog: `watchdogPackage` (`dashboard` = native dashboard) + `watchdogEnabled`; `button.…_restart_app` |
 | `adb` command | not offered: enable ADB over network once via `adb tcpip 5555` |
 
