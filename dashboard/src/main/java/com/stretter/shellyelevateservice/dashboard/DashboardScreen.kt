@@ -21,6 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.stretter.shellyelevateservice.dashboard.browsermod.browserModReporting
@@ -31,6 +34,8 @@ import com.stretter.shellyelevateservice.dashboard.json.objects
 import com.stretter.shellyelevateservice.dashboard.json.string
 import com.stretter.shellyelevateservice.dashboard.lovelace.MasonryView
 import com.stretter.shellyelevateservice.dashboard.lovelace.SectionsView
+import com.stretter.shellyelevateservice.dashboard.lovelace.SwipeNavConfig
+import com.stretter.shellyelevateservice.dashboard.lovelace.ViewSwitcher
 import com.stretter.shellyelevateservice.dashboard.theme.HaTheme
 import com.stretter.shellyelevateservice.dashboard.theme.ProvideHaTheme
 import kotlinx.coroutines.delay
@@ -47,6 +52,14 @@ fun DashboardScreen(runtime: DashboardRuntime) {
                 .fillMaxSize()
                 .background(HaTheme.colors.primaryBackground)
                 .browserModReporting(runtime.browserMod)
+                .pointerInput(runtime.navigator) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            if (event.type == PointerEventType.Press) runtime.navigator.onUserInteraction()
+                        }
+                    }
+                }
         ) {
             when (val state = lovelace) {
                 is LovelaceState.Loaded -> CurrentView(state.config, runtime)
@@ -66,15 +79,24 @@ fun DashboardScreen(runtime: DashboardRuntime) {
     }
 }
 
+/**
+ * The current view with swipe navigation (`swipe_nav`) and the return to the first view after
+ * [DashboardRuntime.returnHomeAfterS] seconds without a touch.
+ */
 @Composable
 private fun CurrentView(config: JsonObject, runtime: DashboardRuntime) {
     val views = config.objects("views")
-    val path = runtime.navigator.viewPath
-    val view = views.firstOrNull { path != null && it.string("path") == path }
-        ?: path?.toIntOrNull()?.let { views.getOrNull(it) }
-        ?: views.firstOrNull()
-        ?: return
-    RenderView(view, runtime.cardContext)
+    if (views.isEmpty()) return
+    val navigator = runtime.navigator
+    val swipeNav = remember(config) { SwipeNavConfig.parse(config) }
+    val index = SwipeNavConfig.viewIndexOrNull(views, navigator.viewPath) ?: 0
+    val returnHomeAfterS by runtime.returnHomeAfterS.collectAsState()
+    LaunchedEffect(index, navigator.interactions, returnHomeAfterS) {
+        if (returnHomeAfterS <= 0 || index == 0) return@LaunchedEffect
+        delay(returnHomeAfterS * 1000L)
+        navigator.home()
+    }
+    ViewSwitcher(views, swipeNav, navigator) { view -> RenderView(view, runtime.cardContext) }
 }
 
 /** Renders a view: `sections`, or `masonry` (also a view without `type`). */

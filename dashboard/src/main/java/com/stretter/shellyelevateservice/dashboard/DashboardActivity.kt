@@ -33,9 +33,9 @@ class DashboardActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         hideSystemBars()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            // Kiosk: back only closes popups, it never leaves the dashboard.
+            // Kiosk: back closes popups, then walks back the view history; it never leaves the dashboard.
             override fun handleOnBackPressed() {
-                runtime.popups.handleBack()
+                if (!runtime.popups.handleBack()) runtime.navigator.back()
             }
         })
         val scale = runtime.settings.scale

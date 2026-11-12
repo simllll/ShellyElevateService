@@ -79,6 +79,11 @@ class DashboardRuntime private constructor(context: Context) {
 
     val cardContext = CardContext(hass, cards, rows, actions, popups, images, formatter, icons, clock)
 
+    private val _returnHomeAfterS = MutableStateFlow(settings.returnHomeAfterS)
+
+    /** See [DashboardSettings.returnHomeAfterS]. */
+    val returnHomeAfterS: StateFlow<Int> = _returnHomeAfterS.asStateFlow()
+
     private val _lovelace = MutableStateFlow<LovelaceState>(LovelaceState.NotConfigured)
     val lovelace: StateFlow<LovelaceState> = _lovelace.asStateFlow()
 
@@ -108,6 +113,7 @@ class DashboardRuntime private constructor(context: Context) {
         if (config == null) _lovelace.value = LovelaceState.NotConfigured
         hass.configure(config)
         browserMod.setBrowserId(settings.browserId)
+        _returnHomeAfterS.value = settings.returnHomeAfterS
         val urlPath = settings.dashboard
         if (dashboardJob != null && urlPath == dashboardPath) return
         val switched = dashboardJob != null

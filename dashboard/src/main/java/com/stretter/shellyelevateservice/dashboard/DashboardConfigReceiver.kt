@@ -17,7 +17,8 @@ import android.util.Log
  * ```
  *
  * Optional: `--es scale 0.75` (see [DashboardSettings.scale]),
- * `--es browser_id 'walldisplay Eingang'` (see [DashboardSettings.browserId]).
+ * `--es browser_id 'walldisplay Eingang'` (see [DashboardSettings.browserId]),
+ * `--es return_home_after_s 60` (see [DashboardSettings.returnHomeAfterS]; 0 = off).
  *
  * A running dashboard (same process) picks the change up immediately.
  */

@@ -23,6 +23,8 @@ adb shell am start -n com.stretter.shellyelevateservice/.dashboard.DashboardActi
 
 All extras are optional; an empty value clears a setting. `--es scale 0.75` zooms the UI
 (1 CSS px = `scale` dp; default 1, which reproduces the web layout on a 1280×800 mdpi screen).
+`--es return_home_after_s 60` sets how long (seconds without a touch) the dashboard stays on
+another view before returning to the first one (default 120, `0` = never).
 A running dashboard applies changes immediately. The activity runs in its own process
 (`:dashboard`), so a crash never takes the background service down; after a crash it restarts
 itself (at most 3 times in 5 minutes).
@@ -95,6 +97,17 @@ On screens up to 450px wide or 500px high (e.g. the 480×480 NSPanel Pro) standa
 browser_mod popups and toasts are fullscreen / full width like `ha-dialog` and `ha-toast`.
 The `iframe` card has no WebView: video URLs (`.mp4`, `.webm`, …) play natively (muted, looped,
 autoplay, released when off-screen or when the activity stops), other URLs show a placeholder.
+
+### Navigation
+
+`navigate` actions switch views (`/dashboard/view` by `path` or index, `#hash` for bubble-card
+pop-ups). With the dashboard's `swipe_nav` (hass-swipe-navigation) horizontal swipes go to the
+next/previous view: `swipe_amount` (% of the width, default 15), `wrap`, `animate` (`swipe`: the
+view follows the finger and the next one slides in; `fade`/`flip`: fade in; `none`), subviews and
+`visible: false` views are skipped. The swipe only starts when no card consumed the movement
+first (sliders, the vacuum map, horizontal drags) and vertical scrolling wins when it passes its
+touch slop first. The Android back key closes popups, then walks back through the view history,
+then goes to the first view. After `return_home_after_s` without a touch the first view is shown.
 
 ### Performance
 

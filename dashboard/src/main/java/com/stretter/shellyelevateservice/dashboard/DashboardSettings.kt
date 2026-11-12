@@ -31,6 +31,14 @@ class DashboardSettings(context: Context) {
         get() = (prefs.getString(KEY_BROWSER_ID, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_BROWSER_ID)
             .takeUnless { it.equals("none", ignoreCase = true) }
 
+    /**
+     * Seconds without touching the screen after which the dashboard returns to its first view
+     * (default 120); 0 turns it off.
+     */
+    val returnHomeAfterS: Int
+        get() = prefs.getString(KEY_RETURN_HOME_AFTER_S, null)?.trim()?.toDoubleOrNull()?.toInt()?.coerceAtLeast(0)
+            ?: DEFAULT_RETURN_HOME_AFTER_S
+
     val hassConfig: HassConfig?
         get() {
             val u = url ?: return null
@@ -45,7 +53,9 @@ class DashboardSettings(context: Context) {
         const val KEY_DASHBOARD = "dashboard"
         const val KEY_SCALE = "scale"
         const val KEY_BROWSER_ID = "browser_id"
+        const val KEY_RETURN_HOME_AFTER_S = "return_home_after_s"
         const val DEFAULT_BROWSER_ID = "walldisplay Wohnbereich"
-        val ALL_KEYS = listOf(KEY_URL, KEY_TOKEN, KEY_DASHBOARD, KEY_SCALE, KEY_BROWSER_ID)
+        const val DEFAULT_RETURN_HOME_AFTER_S = 120
+        val ALL_KEYS = listOf(KEY_URL, KEY_TOKEN, KEY_DASHBOARD, KEY_SCALE, KEY_BROWSER_ID, KEY_RETURN_HOME_AFTER_S)
     }
 }
