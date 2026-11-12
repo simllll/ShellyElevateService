@@ -240,6 +240,7 @@ class HistoryGraphCard(private val config: JsonObject) : CardRenderer {
         Canvas(Modifier.fillMaxWidth().height((rows.size * ROW_HEIGHT + GRID_BOTTOM).dp)) {
             val labelMargin = 5.dp.toPx()
             val maxLabel = (if (narrow) 105 else 185).dp.toPx()
+            // `_yWidth`: widest name + margin, at most 105px (narrow, ≤ 12 columns) or 185px.
             val labelWidth = if (showNames) {
                 rows.maxOf { r -> if (r.name.isEmpty()) 0f else minOf(measurer.measure(r.name, textStyle).size.width + labelMargin, maxLabel) }
             } else 0f
@@ -255,11 +256,15 @@ class HistoryGraphCard(private val config: JsonObject) : CardRenderer {
             rows.forEachIndexed { i, row ->
                 val center = plotTop + band * (i + 0.5f)
                 if (showNames && row.name.isNotEmpty()) {
+                    // ECharts truncates to axisLabel.width = the whole label column (margin
+                    // included), so a name up to the 105/185px cap is never cut; right-aligned
+                    // at the margin, kept inside the canvas.
                     val layout = measurer.measure(
                         row.name, textStyle, overflow = TextOverflow.Ellipsis, maxLines = 1,
-                        constraints = Constraints(maxWidth = (labelWidth - labelMargin).toInt().coerceAtLeast(0)),
+                        constraints = Constraints(maxWidth = labelWidth.toInt().coerceAtLeast(0)),
                     )
-                    drawText(layout, topLeft = Offset(labelWidth - labelMargin - layout.size.width, center - layout.size.height / 2f))
+                    val x = (labelWidth - labelMargin - layout.size.width).coerceAtLeast(0f)
+                    drawText(layout, topLeft = Offset(x, center - layout.size.height / 2f))
                 }
                 clipRect(plotLeft, plotTop, plotRight, plotBottom) {
                     for (bar in row.bars) {
