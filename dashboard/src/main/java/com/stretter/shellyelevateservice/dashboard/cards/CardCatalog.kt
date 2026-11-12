@@ -15,6 +15,7 @@ object CardCatalog {
         registry.register("heading") { HeadingCard(it) }
         registry.register("entities") { EntitiesCard(it) }
         registry.register("tile") { TileCard(it) }
+        registry.register("entity") { EntityCard(it) }
         registry.register("button") { ButtonCard(it) }
         registry.register("markdown") { MarkdownCard(it) }
         registry.register("picture") { PictureCard(it) }
