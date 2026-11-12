@@ -18,6 +18,8 @@ However, switching to a third-party app means you lose access to the great hardw
 - Includes an **app watchdog** to keep Home Assistant running in the foreground
 - Exposes an **HTTP API** for configuration and control
 - Handles **hardware button events** (4 buttons on the XL)
+- Optionally replaces the HA app with a **native dashboard** that renders your Lovelace dashboard
+  without a WebView (see [Native dashboard](#native-dashboard))
 
 ## Features
 
@@ -30,7 +32,8 @@ However, switching to a third-party app means you lose access to the great hardw
 | **Relay Control** | Control the built-in relays via MQTT or HTTP |
 | **Sensor Publishing** | Temperature, humidity, light (lux), proximity, screen brightness |
 | **HTTP API** | RESTful API for configuration and control, optional bearer token |
-| **Presence** | Wide-range presence sensor (XL) as occupancy binary sensor, optional wake on approach |
+| **Presence** | Wide-range presence sensor (XL) or proximity (NSPanel Pro) as occupancy binary sensor, optional wake on approach |
+| **Native dashboard** | Built-in Lovelace renderer (Kotlin/Compose, no WebView) with browser_mod emulation, see [`dashboard/README.md`](dashboard/README.md) |
 
 ## Supported devices
 
@@ -42,7 +45,7 @@ really has is exposed (HTTP API, MQTT discovery).
 | Shelly Wall Display (`STARGATE`) | `Stargate` | 1 | yes | yes | – | – | – | sysfs / Settings |
 | Shelly Wall Display 2 / X2 (`ATLANTIS`, `PEGASUS`) | `Atlantis`, `Pegasus` | 1 | yes | yes | yes | – | – | sysfs / Settings |
 | Shelly Wall Display XL (`BLAKE`) | `Blake` | 1 | yes | yes | yes | wide-range sensor | 4 | sysfs / Settings |
-| Sonoff NSPanel Pro 86 (`NSPANEL_PRO`) | `px30_evb` | – | – | yes | yes | from proximity | – | Settings API (min = sysfs 10), sleep = display off (screen-off timeout) |
+| Sonoff NSPanel Pro 86 (`NSPANEL_PRO`) | `px30_evb` | 2 (GPIO 114/115) | – | yes | yes (reflectance) | from proximity | – | Settings API (min = sysfs 10), sleep = display off (screen-off timeout) |
 
 Unknown models are treated as the original Shelly Wall Display. If detection picks the wrong
 profile, set `deviceModel` to one of the names in brackets (`""`/`auto` = detect; needs an API
@@ -137,7 +140,8 @@ After reboot, ShellyElevate will start automatically and launch the Home Assista
 ## Sonoff NSPanel Pro
 
 ShellyElevate replaces the closed-source *NSPanel Pro Tools* app (`com.seaky.nspanelpro.tools`):
-one app provides MQTT sensors, sleep/wake, brightness, watchdog and (optionally) the native dashboard.
+one app provides MQTT sensors, relays, sleep/wake, brightness, reboot, watchdog and (optionally) the
+native dashboard.
 
 The NSPanel Pro runs an Android 8.1 userdebug build (480×480 screen). Its backlight node
 (`/sys/class/backlight/backlight/brightness`) is root-only and the shipped `/system/xbin/su` is
@@ -154,10 +158,26 @@ had (`WRITE_SETTINGS`, `WAKE_LOCK`):
   Touches are read from the touchscreen node (`/dev/input/event1` is world-readable); a tap on the
   off display is dropped by Android, so it never reaches the dashboard.
 - Light and proximity come from the Android sensors (their raw input nodes are not readable).
+  The proximity sensor reports raw infrared **reflectance**, not a distance (higher = closer:
+  ~20 at rest, 200–6000 with someone right in front of the panel; Android's `maxRange` of 9 is
+  meaningless). *Near* is ≥ 100 and *far* ≤ 50 (hysteresis), which drives `presence` and
+  `wakeOnProximity`. It only reacts at close range (a hand or a person directly in front), not
+  across a room. Its value is published at most every 5 s plus on every near/far change (the
+  sensor itself reports several values per second), without a unit.
+- **Relays**: relay 1 and 2 are GPIO 114 and 115 (`/sys/class/gpio/gpio11x/value`, writable by
+  apps; the same nodes NSPanel Pro Tools drives). GPIO 113 is never touched.
+- **Reboot** sets the `sys.powerctl` property, which init accepts from the app on this
+  permissive-SELinux userdebug build; the panel is back after about 70 s.
 - If the touchscreen node is not readable, a 1 px overlay detects touches instead (needs
   `SYSTEM_ALERT_WINDOW`). A setuid-root `su` (e.g. Magisk), if present, is used automatically for
-  the backlight, `reboot` and `restart_app`; without it those two buttons do nothing on the NSPanel
-  (the native dashboard as watchdog target still restarts).
+  the backlight, `reboot` and `restart_app`. Without it, `restart_app` only works with the native
+  dashboard as watchdog target (it restarts the `:dashboard` process); other apps cannot be
+  force-stopped.
+
+> [!WARNING]
+> The stock firmware ships with `ro.adb.secure=0`: adb on port 5555 accepts **any** connection
+> without an authorization prompt, so everyone on your network can control the panel. Keep it in
+> a trusted network/VLAN.
 
 ### Setup
 
@@ -196,18 +216,40 @@ Assistant (Settings → Devices → MQTT) and update automations to the new enti
 | NSPanel Pro Tools | ShellyElevate |
 |-------------------|---------------|
 | light / lux sensor | `sensor.…_light` (topic `shellyelevateservice/<id>/lux`) |
-| proximity sensor | `sensor.…_proximity` + `binary_sensor.…_presence` (near = ON) |
+| proximity sensor | `sensor.…_proximity` (reflectance) + `binary_sensor.…_presence` (near = ON) |
+| `switch_1` / `switch_2` (relays) | `switch.…_relay` / `switch.…_relay_1` (topics `relay_command`, `relay_command_1`) |
 | `wake_up` command | `button.…_wake` (or `POST /device/wake`) |
 | `sleep` command | `button.…_sleep` (or `POST /device/sleep`) |
 | screen on/off state | `binary_sensor.…_sleeping` |
 | brightness | `number.…_screen_brightness` + `switch.…_auto_brightness` |
-| `reboot` command | `button.…_reboot` (only with a setuid-root `su`) |
+| `reboot` command | `button.…_reboot` |
 | `default_app` / `launcher` | watchdog: `watchdogPackage` (`dashboard` = native dashboard) + `watchdogEnabled`; `button.…_restart_app` |
 | `adb` command | not offered: enable ADB over network once via `adb tcpip 5555` |
 
-There are no relay, temperature, humidity or button entities on the NSPanel. The `adc-keys` input
+There are no temperature, humidity or button entities on the NSPanel. The `adc-keys` input
 device (ESC/HOME/VOLUME) is not wired on the 86 model; its key codes are only published with
 `debugKeys` (topic `unknown_key`).
+
+## Native dashboard
+
+Instead of the HA Companion app, ShellyElevate can show your dashboard itself: a native
+(Kotlin + Jetpack Compose) Lovelace renderer in its own process (`:dashboard`). It loads the
+dashboard config live from Home Assistant and draws the cards natively in the HA default (dark)
+theme, so popups and views open instantly even on the slow SoCs of these panels, and a dashboard
+change in HA shows up without touching the device.
+
+- Layouts: sections and masonry views, view badges; swipe navigation between views (live pager),
+  back key, automatic return to the first view after inactivity.
+- Core cards plus common HACS cards (bubble-card, button-card, auto-entities, Mushroom,
+  template-entity-row, timer-bar, xiaomi-vacuum-map-card, fab-card, …); unknown card types show a
+  placeholder.
+- browser_mod emulation: registers as a browser_mod browser, so popups, notifications, navigate
+  and the browser's media player (TTS) from existing automations keep working.
+- Instant on-screen feedback for the hardware buttons.
+
+Setup, the full list of supported cards and the limitations are in
+[`dashboard/README.md`](dashboard/README.md). Use `watchdogPackage` `dashboard` to keep it in
+front ([Native dashboard as watchdog target](#native-dashboard-as-watchdog-target)).
 
 ## Recommended Setup
 
@@ -225,6 +267,8 @@ This is the setup I use on my Shelly Wall Display XL:
    - This is the default app monitored by the watchdog
 
 3. **ShellyElevateService** - This service running in the background
+
+Alternatively skip the HA app and use the [native dashboard](#native-dashboard).
 
 ## Configuration
 
@@ -326,12 +370,12 @@ stored as a number). Nothing is stored if any key is rejected.
 ### Device Control
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/device/relay?num=0` | Get relay state |
+| GET | `/device/relay?num=0` | Get relay state (`num` 0 = relay 1, 1 = relay 2) |
 | POST | `/device/relay` | Set relay state `{"num": 0, "state": true}` |
 | GET | `/device/getTemperature` | Get temperature |
 | GET | `/device/getHumidity` | Get humidity |
 | GET | `/device/getLux` | Get light level |
-| GET | `/device/getProximity` | Get proximity distance |
+| GET | `/device/getProximity` | Get proximity value (distance in cm; reflectance on the NSPanel Pro) |
 | GET/POST | `/device/wake` | Wake screen |
 | GET/POST | `/device/sleep` | Dim screen |
 | POST | `/device/reboot` | Reboot device |
@@ -361,12 +405,12 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 | `temp` | Temperature in °C (every 30 s) |
 | `hum` | Humidity in % (every 30 s) |
 | `lux` | Light level in lux |
-| `proximity` | Proximity distance in cm |
+| `proximity` | Proximity distance in cm (NSPanel Pro: reflectance, at most every 5 s) |
 | `presence` | Presence sensor (ON = near / OFF = far): XL wide-range sensor, NSPanel Pro proximity |
 | `bri` | Screen brightness (0-255) |
 | `auto_bri` | Automatic brightness enabled (ON/OFF) |
 | `sleeping` | Screen dimmed state (ON/OFF) |
-| `relay_state` | Relay state (ON/OFF) |
+| `relay_state`, `relay_state_1` | Relay 1 / relay 2 state (ON/OFF) |
 
 ### Events (for automations)
 | Topic | Payload | Description |
@@ -386,7 +430,7 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 ### Commands (subscribe)
 | Topic | Payload | Description |
 |-------|---------|-------------|
-| `relay_command` | `ON` / `OFF` | Control relay |
+| `relay_command`, `relay_command_1` | `ON` / `OFF` | Control relay 1 / relay 2 |
 | `bri_set` | `0`-`255` | Set screen brightness (turns automatic brightness off) |
 | `auto_bri_set` | `ON` / `OFF` | Turn automatic brightness on/off |
 | `sleep` | any | Dim screen |

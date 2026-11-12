@@ -1,7 +1,8 @@
 # Native Lovelace dashboard (`:dashboard`)
 
 A native (Kotlin + Jetpack Compose) renderer for a Home Assistant dashboard, built for the Shelly
-Wall Display XL whose WebView is too slow for the HA frontend. It loads the dashboard config live
+Wall Display XL (1280×800) and the Sonoff NSPanel Pro (480×480), whose WebViews are too slow for
+the HA frontend (popups took 1–4 s to fill on the XL). It loads the dashboard config live
 from HA (`lovelace/config`) and renders every card type natively, looking like the web frontend
 (default theme, dark mode, frontend `20261028.5`). Unknown card types render a placeholder that
 shows the type name.
@@ -23,6 +24,7 @@ adb shell am start -n com.stretter.shellyelevateservice/.dashboard.DashboardActi
 
 All extras are optional; an empty value clears a setting. `--es scale 0.75` zooms the UI
 (1 CSS px = `scale` dp; default 1, which reproduces the web layout on a 1280×800 mdpi screen).
+`--es browser_id 'walldisplay Eingang'` sets the browser_mod id (see below).
 `--es return_home_after_s 60` sets how long (seconds without a touch) the dashboard stays on
 another view before returning to the first one (default 120, `0` = never).
 A running dashboard applies changes immediately. The activity runs in its own process
@@ -36,6 +38,34 @@ To keep the dashboard in front with the service's app watchdog (instead of the H
 adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
     -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogPackage --es value dashboard
 ```
+
+Use a long-lived token of a **non-admin** HA user per panel (e.g. the panel's own user): the
+dashboard then sees exactly what that user sees, and automations that map users to browsers
+(`context.user_id`) keep working.
+
+## Supported cards
+
+| Kind | Types |
+|---|---|
+| Layout | `sections` and `masonry` views (`panel`/`sidebar` views show a "not supported" message), view badges (entity, `custom:mushroom-template-badge`), `grid`, `horizontal-stack`, `vertical-stack` |
+| Core cards | `alarm-panel`, `button`, `energy-date-selection`, `energy-devices-detail-graph`, `entities`, `entity`, `heading`, `history-graph`, `iframe` (video URLs only), `markdown`, `picture`, `tile`, `weather-forecast` |
+| Entity rows | default entity rows (sensor, toggle, climate, cover, fan, humidifier, lock, valve, scene, script, input_*), `attribute`, `button`/`call-service`/`perform-action`, `divider`, `section`, `simple-entity` |
+| HACS cards | `custom:auto-entities`, `custom:bubble-card` (pop-up, button, media-player), `custom:button-card`, `custom:fab-card`, `custom:mushroom-climate-card`, `custom:mushroom-template-card`, `custom:refreshable-picture-card`, `custom:template-entity-row`, `custom:timer-bar-card`, `custom:xiaomi-vacuum-map-card` |
+
+Everything else renders a placeholder with the card type.
+
+## Limitations
+
+- Only the configured dashboard is shown: no sidebar, settings, other dashboards or editing.
+- Card CSS (`styles`, `card_mod`, bubble-card `styles`) is not applied.
+- SVG pictures are drawn as a static first frame (no animations, no filters).
+- The more-info dialog is minimal (state and basic controls, no history, attributes or settings).
+- Energy cards: day periods only (no week/month/year, no compare).
+- `mushroom-climate-card`: no `hvac_modes` buttons, no `collapsible_controls`.
+- `button-card` JavaScript templates run through a small evaluator (no JS engine); a template
+  outside its subset renders as empty (logged as `unsupported template`).
+- browser_mod `javascript` is not executed (only the heartbeat `hass.callService(…)`).
+- New HA frontend features do not arrive automatically; each card is a port.
 
 ## Architecture
 
@@ -69,7 +99,7 @@ DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardR
 | `icons` | MDI webfont (`assets/mdi.ttf`) + name map (`assets/mdi-map.txt`), `MdiIcon` |
 | `markdown` | Markdown subset parser and renderer (`ha-markdown` look) |
 | `format`, `image`, `ui`, `json` | formatting, image loading (bitmaps and SVG via AndroidSVG), controls (`HaSwitch`, `HaButton`, `LoopingVideo`, …), lenient JSON accessors |
-| `custom` | HACS cards: `button-card` (+ tiny JS-template evaluator, no JS engine), `auto-entities` (filter/sort engine, registry on demand via `get_entries`), `mushroom-template-card`, `template-entity-row`, `timer-bar-card`, `fab-card` (floating button drawn in `PopupHost.FloatingLayer`, fixed above the view), `mushroom-climate-card` (state, hvac_action badge, temperature control) |
+| `custom` | HACS cards: `button-card` (+ tiny JS-template evaluator, no JS engine), `auto-entities` (filter/sort engine, registry on demand via `get_entries`), `mushroom-template-card`, `template-entity-row`, `timer-bar-card`, `fab-card` (floating button drawn in `PopupHost.FloatingLayer`, fixed above the view, touch target 12px larger than the circle), `mushroom-climate-card` (state, hvac_action badge, temperature control) |
 
 ### Layout fidelity
 
@@ -102,9 +132,12 @@ autoplay, released when off-screen or when the activity stops), other URLs show 
 
 `navigate` actions switch views (`/dashboard/view` by `path` or index, `#hash` for bubble-card
 pop-ups). With the dashboard's `swipe_nav` (hass-swipe-navigation) horizontal swipes go to the
-next/previous view: `swipe_amount` (% of the width, default 15), `wrap`, `animate` (`swipe`: the
-view follows the finger and the next one slides in; `fade`/`flip`: fade in; `none`), subviews and
-`visible: false` views are skipped. The swipe only starts when no card consumed the movement
+next/previous view like a pager: the current and the neighbouring view move with the finger, and
+on release it switches at `swipe_amount` (% of the width, default 15) or on a fling, otherwise it
+springs back. The two neighbours stay composed off-screen, so the next view is already laid out
+when the drag starts. `wrap`, `animate` (`swipe` as described; `fade`/`flip`: fade in; `none`);
+subviews and `visible: false` views are skipped. Floating buttons, bubble pop-ups and videos only
+run in the active view. The swipe only starts when no card consumed the movement
 first (sliders, the vacuum map, horizontal drags) and vertical scrolling wins when it passes its
 touch slop first. The Android back key closes popups, then walks back through the view history,
 then goes to the first view. After `return_home_after_s` without a touch the first view is shown.
@@ -143,6 +176,12 @@ transient audio focus) and resumes paused media afterwards. State, volume, mute,
 and position are reported like browser_mod.js (`browser_mod/update {player}`; position every
 10 s while playing). Playback runs in the dashboard process and continues while the activity is
 stopped or the screen is off. Video URLs play their audio only.
+
+### Pictures
+
+`ImageLoader` decodes bitmaps subsampled to the display size and rasterizes SVGs with AndroidSVG.
+SVGs with a fixed root `width`/`height` (e.g. animated weather icons) are scaled into the target
+size through their viewBox (or `0 0 width height` when the viewBox is missing).
 
 ### Hardware buttons
 
