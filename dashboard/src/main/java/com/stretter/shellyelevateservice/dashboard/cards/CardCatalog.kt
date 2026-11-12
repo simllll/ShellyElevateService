@@ -1,5 +1,7 @@
 package com.stretter.shellyelevateservice.dashboard.cards
 
+import com.stretter.shellyelevateservice.dashboard.custom.registerCustomCards
+import com.stretter.shellyelevateservice.dashboard.custom.registerCustomRows
 import com.stretter.shellyelevateservice.dashboard.rows.RowRegistry
 import com.stretter.shellyelevateservice.dashboard.rows.registerCoreRows
 
@@ -18,11 +20,9 @@ object CardCatalog {
         registry.register("vertical-stack") { VerticalStackCard(it) }
         registry.register("horizontal-stack") { HorizontalStackCard(it) }
         registry.register("grid") { GridCard(it) }
+        registry.registerCustomCards()
         // Custom cards (implemented separately):
-        // registry.register("custom:button-card") { ... }
         // registry.register("custom:bubble-card") { ... }
-        // registry.register("custom:auto-entities") { ... }
-        // registry.register("custom:mushroom-template-card") { ... }
         // registry.register("custom:xiaomi-vacuum-map-card") { ... }
         // registry.register("custom:refreshable-picture-card") { ... }
         // registry.register("weather-forecast") { ... }
@@ -31,6 +31,6 @@ object CardCatalog {
 
     fun registerRows(registry: RowRegistry) {
         registry.registerCoreRows()
-        // registry.register("custom:template-entity-row") { ... }
+        registry.registerCustomRows()
     }
 }
