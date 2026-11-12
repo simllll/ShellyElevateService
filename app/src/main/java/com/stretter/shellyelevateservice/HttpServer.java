@@ -1,6 +1,7 @@
 package com.stretter.shellyelevateservice;
 
 import static com.stretter.shellyelevateservice.Constants.INTENT_SETTINGS_CHANGED;
+import static com.stretter.shellyelevateservice.Constants.SP_DEVICE_MODEL;
 import static com.stretter.shellyelevateservice.Constants.INTENT_SCREEN_SAVER_STARTED;
 import static com.stretter.shellyelevateservice.Constants.INTENT_SCREEN_SAVER_STOPPED;
 import static com.stretter.shellyelevateservice.Constants.SP_HTTP_API_TOKEN;
@@ -56,7 +57,7 @@ public class HttpServer extends NanoHTTPD {
      */
     private static final Set<String> PROTECTED_SETTINGS = new HashSet<>(Arrays.asList(
             SP_MQTT_BROKER, SP_MQTT_PORT, SP_MQTT_USERNAME, SP_MQTT_CLIENTID, SP_WATCHDOG_PACKAGE,
-            SP_HTTP_API_TOKEN));
+            SP_HTTP_API_TOKEN, SP_DEVICE_MODEL));
 
     SettingsParser mSettingsParser = new SettingsParser();
     private final BroadcastReceiver settingsChangedBroadcastReceiver;
@@ -409,7 +410,7 @@ public class HttpServer extends NanoHTTPD {
                     deltaTime /= 1000;
                     if (deltaTime > 20) {
                         try {
-                            Runtime.getRuntime().exec("reboot");
+                            mDeviceHelper.reboot();
                             jsonResponse.put("success", true);
                         } catch (IOException e) {
                             Log.e("HttpServer", "Error rebooting:", e);

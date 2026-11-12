@@ -35,12 +35,35 @@ public class DeviceHelper {
             "/sys/devices/platform/backlight/backlight/backlight/brightness"
             };
     private String screenBrightnessFile;
+    private final DeviceModel device = DeviceModel.getReportedDevice();
+    // Root shell, only on devices with root-only nodes and a setuid su (null otherwise)
+    private final RootShell rootShell;
+    // Writer for a root-only backlight node; null = Settings API (NSPanel Pro without root)
+    private volatile BacklightStrategy backlightStrategy;
     private boolean screenOn = true;
     private volatile int lastScreenBrightness = -1;
 
     private static final String TAG = "DeviceHelper";
 
     public DeviceHelper() {
+        RootShell root = null;
+        if (device.backlightRootOnly) {
+            RootShell candidate = RootShell.get();
+            if (candidate.isUsable()) {
+                root = candidate;
+                root.prepareAsync();
+                backlightStrategy = root;
+            }
+        }
+        rootShell = root;
+
+        if (device.backlightPath != null) {
+            screenBrightnessFile = device.backlightPath;
+            Log.i(TAG, "Using brightness file of " + device.name() + ": " + screenBrightnessFile
+                    + (device.backlightRootOnly ? " via " + (backlightStrategy != null ? backlightStrategy.name() : "Settings API") : ""));
+            return;
+        }
+
         for (String brightnessFile : screenBrightnessFiles) {
             File f = new File(brightnessFile);
             if (f.exists()) {
@@ -66,6 +89,15 @@ public class DeviceHelper {
         return screenOn;
     }
 
+    /**
+     * The display is being switched off (not dimmed): report brightness 0 without writing it,
+     * the next setScreenBrightness after waking applies the real value.
+     */
+    public void markScreenOff() {
+        lastScreenBrightness = 0;
+        if (mMQTTServer != null) mMQTTServer.publishScreenBrightness(0);
+    }
+
     public void setScreenBrightness(int brightness) {
         lastScreenBrightness = brightness;
         setScreenBrightnessInternal(brightness);
@@ -82,6 +114,28 @@ public class DeviceHelper {
 
         Log.d(TAG, "Set brightness to: " + brightness);
 
+        if (device.backlightRootOnly) {
+            BacklightStrategy strategy = backlightStrategy;
+            if (strategy != null && strategy.isUsable()) {
+                // Only the sysfs node: Android's own brightness (Settings) would ramp the
+                // backlight through the lights HAL and could overwrite a 0 ("sleep")
+                final int value = brightness;
+                strategy.setBacklight(screenBrightnessFile, value, () -> writeBrightnessSetting(value));
+            } else {
+                // Settings API only (on the NSPanel Pro 0 means sysfs 10: dimmest, not off);
+                // the node itself is not writable, writing it would only log errors
+                writeBrightnessSetting(brightness);
+            }
+            return;
+        }
+
+        writeBrightnessSetting(brightness);
+
+        // Also try sysfs as backup
+        writeFileContent(screenBrightnessFile, String.valueOf(brightness));
+    }
+
+    private static void writeBrightnessSetting(int brightness) {
         // Try Android Settings API first
         if (Settings.System.canWrite(mApplicationContext)) {
             try {
@@ -98,9 +152,61 @@ public class DeviceHelper {
         } else {
             Log.w(TAG, "App cannot write system settings - brightness control may not work");
         }
+    }
 
-        // Also try sysfs as backup
-        writeFileContent(screenBrightnessFile, String.valueOf(brightness));
+    /**
+     * Reboots the device. Devices with a root shell reboot through it (an app uid cannot run
+     * "reboot" itself), falling back to the plain command.
+     */
+    public void reboot() throws IOException {
+        if (rootShell != null && rootShell.isUsable()) {
+            rootShell.reboot(DeviceHelper::execReboot);
+            return;
+        }
+        Runtime.getRuntime().exec("reboot");
+    }
+
+    private static void execReboot() {
+        try {
+            Runtime.getRuntime().exec("reboot");
+        } catch (IOException e) {
+            Log.e(TAG, "Error rebooting:", e);
+        }
+    }
+
+    /** Force-stops an app (root shell where available, "am force-stop" as app uid otherwise). */
+    public void forceStopApp(String packageName) throws IOException {
+        if (rootShell != null && rootShell.isUsable()) {
+            try {
+                rootShell.forceStop(packageName, () -> execForceStop(packageName));
+                return;
+            } catch (IllegalArgumentException e) {
+                throw new IOException(e.getMessage());
+            }
+        }
+        Runtime.getRuntime().exec("am force-stop " + packageName);
+    }
+
+    private static void execForceStop(String packageName) {
+        try {
+            Runtime.getRuntime().exec("am force-stop " + packageName);
+        } catch (IOException e) {
+            Log.w(TAG, "Could not force stop app: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Plugs in a writer for a root-only backlight node (e.g. a future adb-shell helper that can
+     * switch the NSPanel Pro screen fully off); null returns to the Settings API.
+     */
+    public void setBacklightStrategy(BacklightStrategy strategy) {
+        backlightStrategy = strategy;
+        Log.i(TAG, "Backlight strategy: " + (strategy != null ? strategy.name() : "Settings API"));
+    }
+
+    /** Root shell for root-only hardware nodes, null if the device needs none or su is unusable. */
+    public RootShell getRootShell() {
+        return rootShell;
     }
 
     /** Last brightness applied via setScreenBrightness, -1 if none yet. */
@@ -121,7 +227,7 @@ public class DeviceHelper {
         boolean relayState = false;
 
         // Safety check
-        if (num < 0 || num >= possibleRelayFiles.length) return false;
+        if (num < 0 || num >= possibleRelayFiles.length || device.inputs == 0) return false;
 
         for (String relayFile : possibleRelayFiles[num]) {
             // readFileContent returns null when the node does not exist on this model
@@ -135,7 +241,7 @@ public class DeviceHelper {
 
     public void setRelay(int num, boolean state) {
         // Safety check
-        if (num < 0 || num >= possibleRelayFiles.length) return;
+        if (num < 0 || num >= possibleRelayFiles.length || device.inputs == 0) return;
 
         for (String relayFile : possibleRelayFiles[num]) {
             writeFileContent(relayFile, state ? "1" : "0");
@@ -147,6 +253,7 @@ public class DeviceHelper {
     }
 
     public double getTemperature() {
+        if (!device.hasTempHumSensor) return -999;
         try
         {
             var content = readFileContent(tempAndHumFile);
@@ -155,7 +262,7 @@ public class DeviceHelper {
             String[] tempSplit = content.split(":");
             double temp = (Double.parseDouble(tempSplit[1]) * 175.0 / 65535.0) - 45.0;
 
-            temp += DeviceModel.getReportedDevice().temperatureOffset;
+            temp += device.temperatureOffset;
             return Math.round(temp * 10.0) / 10.0;
         } catch (Exception e) {
             Log.d("TAG", "Error while reading temperature: " + e);
@@ -164,6 +271,7 @@ public class DeviceHelper {
     }
 
     public double getHumidity() {
+        if (!device.hasTempHumSensor) return -999;
         try {
             var content = readFileContent(tempAndHumFile);
             if (content == null || content.isEmpty()) return -999;
@@ -171,7 +279,7 @@ public class DeviceHelper {
             String[] humiditySplit = content.split(":");
             double humidity = Double.parseDouble(humiditySplit[0]) * 100.0 / 65535.0;
 
-            humidity += DeviceModel.getReportedDevice().humidityOffset;
+            humidity += device.humidityOffset;
 
             return Math.round(humidity);
         } catch (Exception e) {

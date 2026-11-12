@@ -3,7 +3,7 @@
 > [!CAUTION]
 > All content in this repository is provided "as is" and may render your device unusable. Always exercise caution when working with your device. No warranty or guarantee is provided.
 
-ShellyElevate is a **background service** for the **Shelly Wall Display XL** that exposes hardware features to Home Assistant while letting you use the **official Home Assistant Companion app** as your dashboard.
+ShellyElevate is a **background service** for the **Shelly Wall Display XL** (and the **Sonoff NSPanel Pro**, see [Supported devices](#supported-devices)) that exposes hardware features to Home Assistant while letting you use the **official Home Assistant Companion app** (or the built-in native dashboard) as your dashboard.
 
 ## Why?
 
@@ -32,7 +32,26 @@ However, switching to a third-party app means you lose access to the great hardw
 | **HTTP API** | RESTful API for configuration and control, optional bearer token |
 | **Presence** | Wide-range presence sensor (XL) as occupancy binary sensor, optional wake on approach |
 
+## Supported devices
+
+One APK runs on all of them; the device is detected from `Build.MODEL` and only the hardware it
+really has is exposed (HTTP API, MQTT discovery).
+
+| Device | `Build.MODEL` | Relays | Temp / Hum | Light | Proximity | Presence | Buttons | Backlight |
+|--------|---------------|--------|------------|-------|-----------|----------|---------|-----------|
+| Shelly Wall Display (`STARGATE`) | `Stargate` | 1 | yes | yes | – | – | – | sysfs / Settings |
+| Shelly Wall Display 2 / X2 (`ATLANTIS`, `PEGASUS`) | `Atlantis`, `Pegasus` | 1 | yes | yes | yes | – | – | sysfs / Settings |
+| Shelly Wall Display XL (`BLAKE`) | `Blake` | 1 | yes | yes | yes | wide-range sensor | 4 | sysfs / Settings |
+| Sonoff NSPanel Pro 86 (`NSPANEL_PRO`) | `px30_evb` | – | – | yes | yes | from proximity | – | Settings API (min = sysfs 10), sleep = display off (screen-off timeout) |
+
+Unknown models are treated as the original Shelly Wall Display. If detection picks the wrong
+profile, set `deviceModel` to one of the names in brackets (`""`/`auto` = detect; needs an API
+token, takes effect after a service restart).
+
 ## Installation
+
+The steps below are for the Shelly Wall Display. For the NSPanel Pro see
+[Sonoff NSPanel Pro](#sonoff-nspanel-pro) (steps 4–7 are the same).
 
 ### 1. Enable Developer Mode on Shelly Wall Display XL
 
@@ -86,7 +105,7 @@ adb shell dumpsys activity services com.stretter.shellyelevateservice
 ### 5. Set an HTTP API token
 
 The HTTP API on port 8080 is reachable by everyone on your network. Settings that redirect the device
-(`mqttBroker`, `mqttPort`, `mqttUsername`, `mqttDeviceId`, `watchdogPackage`) can **only** be changed
+(`mqttBroker`, `mqttPort`, `mqttUsername`, `mqttDeviceId`, `watchdogPackage`, `deviceModel`) can **only** be changed
 over HTTP when an API token is set. The token itself can only be set via adb:
 
 ```bash
@@ -114,6 +133,81 @@ adb reboot
 ```
 
 After reboot, ShellyElevate will start automatically and launch the Home Assistant app (if watchdog is enabled).
+
+## Sonoff NSPanel Pro
+
+ShellyElevate replaces the closed-source *NSPanel Pro Tools* app (`com.seaky.nspanelpro.tools`):
+one app provides MQTT sensors, sleep/wake, brightness, watchdog and (optionally) the native dashboard.
+
+The NSPanel Pro runs an Android 8.1 userdebug build (480×480 screen). Its backlight node
+(`/sys/class/backlight/backlight/brightness`) is root-only and the shipped `/system/xbin/su` is
+not setuid, so ShellyElevate works **without root**, with the same permissions NSPanel Pro Tools
+had (`WRITE_SETTINGS`, `WAKE_LOCK`):
+
+- **Brightness / dimming** go through the Android Settings API (Settings 0 = backlight 10).
+- **Sleep** with `screenSaverMinBrightness` `0` (the NSPanel default) switches the display really
+  off: the screen-off timeout is lowered to 1 s, Android turns the display off, and the original
+  timeout is restored right after (also after a crash, on the next start). While the display is
+  off a partial wake lock keeps MQTT and the sensors running, and the watchdog pauses.
+  `screenSaverMinBrightness` > 0 dims instead.
+- **Wake** (touch, proximity with `wakeOnProximity`, MQTT/HTTP) uses a short screen wake lock.
+  Touches are read from the touchscreen node (`/dev/input/event1` is world-readable); a tap on the
+  off display is dropped by Android, so it never reaches the dashboard.
+- Light and proximity come from the Android sensors (their raw input nodes are not readable).
+- If the touchscreen node is not readable, a 1 px overlay detects touches instead (needs
+  `SYSTEM_ALERT_WINDOW`). A setuid-root `su` (e.g. Magisk), if present, is used automatically for
+  the backlight, `reboot` and `restart_app`; without it those two buttons do nothing on the NSPanel
+  (the native dashboard as watchdog target still restarts).
+
+### Setup
+
+```bash
+adb connect <nspanel-ip>:5555        # or USB
+
+# 1. Stop NSPanel Pro Tools first: it also drives the backlight and would fight over it
+adb shell am force-stop com.seaky.nspanelpro.tools
+adb shell pm disable-user --user 0 com.seaky.nspanelpro.tools   # or: adb uninstall com.seaky.nspanelpro.tools
+
+# 2. Install and grant
+adb install ./shellyelevateservice.apk
+adb shell appops set com.stretter.shellyelevateservice WRITE_SETTINGS allow
+adb shell appops set com.stretter.shellyelevateservice SYSTEM_ALERT_WINDOW allow   # only needed if /dev/input/event1 is not readable
+adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
+
+# 3. Android must not turn the screen off or change the brightness on its own
+#    (ShellyElevate's idle timer decides; the sleep trick restores this value every time)
+adb shell settings put system screen_off_timeout 2147483647
+adb shell settings put system screen_brightness_mode 0
+
+# 4. Start, then set the API token and configure as in steps 4–6 above
+adb shell am start-foreground-service com.stretter.shellyelevateservice/.ShellyElevateService
+```
+
+`adb logcat -s ShellyElevateService ScreenOffTimeout InputEventReader DeviceHelper` shows sleep/wake
+(`Switching screen off via screen-off timeout`, `Screen-off timeout restored to …`) and which input
+devices are read.
+
+### Migrating from NSPanel Pro Tools
+
+NSPanel Pro Tools announced its own MQTT device. After switching, delete that device in Home
+Assistant (Settings → Devices → MQTT) and update automations to the new entities
+(`<id>` = `mqttDeviceId`, the entity ids follow the device name *Sonoff NSPanel Pro*):
+
+| NSPanel Pro Tools | ShellyElevate |
+|-------------------|---------------|
+| light / lux sensor | `sensor.…_light` (topic `shellyelevateservice/<id>/lux`) |
+| proximity sensor | `sensor.…_proximity` + `binary_sensor.…_presence` (near = ON) |
+| `wake_up` command | `button.…_wake` (or `POST /device/wake`) |
+| `sleep` command | `button.…_sleep` (or `POST /device/sleep`) |
+| screen on/off state | `binary_sensor.…_sleeping` |
+| brightness | `number.…_screen_brightness` + `switch.…_auto_brightness` |
+| `reboot` command | `button.…_reboot` (only with a setuid-root `su`) |
+| `default_app` / `launcher` | watchdog: `watchdogPackage` (`dashboard` = native dashboard) + `watchdogEnabled`; `button.…_restart_app` |
+| `adb` command | not offered: enable ADB over network once via `adb tcpip 5555` |
+
+There are no relay, temperature, humidity or button entities on the NSPanel. The `adc-keys` input
+device (ESC/HOME/VOLUME) is not wired on the 86 model; its key codes are only published with
+`debugKeys` (topic `unknown_key`).
 
 ## Recommended Setup
 
@@ -268,7 +362,7 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 | `hum` | Humidity in % (every 30 s) |
 | `lux` | Light level in lux |
 | `proximity` | Proximity distance in cm |
-| `presence` | Presence sensor (ON = near / OFF = far), XL wide-range sensor |
+| `presence` | Presence sensor (ON = near / OFF = far): XL wide-range sensor, NSPanel Pro proximity |
 | `bri` | Screen brightness (0-255) |
 | `auto_bri` | Automatic brightness enabled (ON/OFF) |
 | `sleeping` | Screen dimmed state (ON/OFF) |
@@ -309,15 +403,15 @@ Home Assistant comes `online`.
 
 ShellyElevate publishes MQTT discovery config to `homeassistant/device/<client-id>/config`. After connecting to MQTT, the device will automatically appear in Home Assistant with:
 
-- Temperature sensor
-- Humidity sensor
+- Temperature sensor (if available)
+- Humidity sensor (if available)
 - Light sensor
 - Proximity sensor (if available)
 - Presence binary sensor (occupancy, if available)
 - Screen Brightness number (slider 0-255)
 - Auto Brightness switch
 - Sleeping binary sensor
-- Relay switch(es)
+- Relay switch(es) (if available)
 - Button events (for automations)
 - Sleep/Wake/Reboot/Restart App buttons
 
@@ -443,7 +537,7 @@ All settings can be configured via `POST /settings` with a JSON body.
 |-----|------|---------|-------------|
 | `screenSaver` | boolean | `true` | Enable screen dimming on idle |
 | `screenSaverDelay` | int | `45` | Seconds of inactivity before dimming |
-| `screenSaverMinBrightness` | int | `10` | Brightness level when dimmed (0-255) |
+| `screenSaverMinBrightness` | int | `10` (NSPanel Pro: `0`) | Brightness level when dimmed (0-255; on the NSPanel Pro `0` switches the display off) |
 | `wakeOnProximity` | boolean | `false` | Wake screen when the proximity/presence sensor reports "near" |
 
 ### App Watchdog Settings
@@ -462,6 +556,7 @@ All settings can be configured via `POST /settings` with a JSON body.
 | `httpApiToken` | string | `""` | Bearer token for the HTTP API (set via adb, see Installation step 5; masked in `GET /settings`) |
 | `mediaEnabled` | boolean | `true` | Enable media/audio playback |
 | `debugKeys` | boolean | `false` | Publish unknown key codes to MQTT for debugging |
+| `deviceModel` | string | not set (detect) | Force a device profile, e.g. `NSPANEL_PRO` or `BLAKE` (see [Supported devices](#supported-devices); protected, applies after a service restart) |
 
 ## Building
 

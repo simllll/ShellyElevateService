@@ -60,7 +60,8 @@ public class MQTTServer {
     private BroadcastReceiver settingsChangedReceiver;
     // Last known screen-saver state, re-sent on (re)connect and when Home Assistant restarts
     private volatile boolean sleeping = false;
-    // Last presence state from the gpio_keys presence sensor, null until the first event
+    // Last presence state (gpio_keys presence sensor, or proximity on devices without one),
+    // null until the first event
     private volatile Boolean presence = null;
 
     // Brightness publish throttling, guarded by this
@@ -320,6 +321,19 @@ public class MQTTServer {
     }
 
     private String[] commandTopics() {
+        if (DeviceModel.getReportedDevice().inputs == 0) {
+            // No relays: do not listen for relay commands at all
+            return new String[]{
+                    parseTopic(MQTT_TOPIC_UPDATE),
+                    parseTopic(MQTT_TOPIC_SLEEP_BUTTON),
+                    parseTopic(MQTT_TOPIC_WAKE_BUTTON),
+                    parseTopic(MQTT_TOPIC_REBOOT_BUTTON),
+                    parseTopic(MQTT_TOPIC_RESTART_APP_BUTTON),
+                    parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND),
+                    parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
+                    MQTT_TOPIC_HOME_ASSISTANT_STATUS
+            };
+        }
         return new String[]{
                 parseTopic(MQTT_TOPIC_UPDATE),
                 parseTopic(MQTT_TOPIC_RELAY_COMMAND),
@@ -357,12 +371,12 @@ public class MQTTServer {
     private void publishCurrentStates() {
         DeviceModel device = DeviceModel.getReportedDevice();
         // Each state on its own: one unreadable sensor must not block all the others
-        safely("temp/hum", this::publishTempAndHum);
+        if (device.hasTempHumSensor) safely("temp/hum", this::publishTempAndHum);
         for (int num = 0; num < device.inputs; num++) {
             final int relay = num;
             safely("relay " + relay, () -> publishRelay(relay, mDeviceHelper.getRelay(relay)));
         }
-        safely("lux", () -> publishLux(mDeviceSensorManager.getLastMeasuredLux()));
+        if (device.hasLightSensor) safely("lux", () -> publishLux(mDeviceSensorManager.getLastMeasuredLux()));
         safely("brightness", () -> forcePublishScreenBrightness(mDeviceHelper.getScreenBrightness()));
         safely("auto brightness", this::publishAutoBrightness);
         if (device.hasProximitySensor) {
@@ -535,6 +549,11 @@ public class MQTTServer {
         publishInternal(parseTopic(MQTT_TOPIC_RELAY_STATE) + mqttSuffix, state ? "ON" : "OFF", 1, false);
     }
 
+    /** Last presence state, null until the first event. */
+    public Boolean getPresence() {
+        return presence;
+    }
+
     /** Records the presence (occupancy) state and publishes it if connected. */
     public void publishPresence(boolean present) {
         presence = present;
@@ -585,8 +604,8 @@ public class MQTTServer {
         DeviceModel model = DeviceModel.getReportedDevice();
         JSONObject device = new JSONObject();
         device.put("ids", clientId);
-        device.put("name", "Shelly Wall Display");
-        device.put("mf", "Shelly");
+        device.put("name", model.deviceName);
+        device.put("mf", model.manufacturer);
         device.put("mdl", model.friendlyName);
         device.put("mdl_id", model.modelName);
         device.put("sw", getVersionName());
@@ -603,35 +622,39 @@ public class MQTTServer {
 
         JSONObject components = new JSONObject();
 
-        JSONObject tempSensorPayload = new JSONObject();
-        tempSensorPayload.put("p", "sensor");
-        tempSensorPayload.put("name", "Temperature");
-        tempSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_TEMP_SENSOR));
-        tempSensorPayload.put("device_class", "temperature");
-        tempSensorPayload.put("unit_of_measurement", "°C");
-        tempSensorPayload.put("state_class", "measurement");
-        tempSensorPayload.put("unique_id", clientId + "_temp");
-        components.put(clientId + "_temp", tempSensorPayload);
+        if (model.hasTempHumSensor) {
+            JSONObject tempSensorPayload = new JSONObject();
+            tempSensorPayload.put("p", "sensor");
+            tempSensorPayload.put("name", "Temperature");
+            tempSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_TEMP_SENSOR));
+            tempSensorPayload.put("device_class", "temperature");
+            tempSensorPayload.put("unit_of_measurement", "°C");
+            tempSensorPayload.put("state_class", "measurement");
+            tempSensorPayload.put("unique_id", clientId + "_temp");
+            components.put(clientId + "_temp", tempSensorPayload);
 
-        JSONObject humSensorPayload = new JSONObject();
-        humSensorPayload.put("p", "sensor");
-        humSensorPayload.put("name", "Humidity");
-        humSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_HUM_SENSOR));
-        humSensorPayload.put("device_class", "humidity");
-        humSensorPayload.put("unit_of_measurement", "%");
-        humSensorPayload.put("state_class", "measurement");
-        humSensorPayload.put("unique_id", clientId + "_hum");
-        components.put(clientId + "_hum", humSensorPayload);
+            JSONObject humSensorPayload = new JSONObject();
+            humSensorPayload.put("p", "sensor");
+            humSensorPayload.put("name", "Humidity");
+            humSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_HUM_SENSOR));
+            humSensorPayload.put("device_class", "humidity");
+            humSensorPayload.put("unit_of_measurement", "%");
+            humSensorPayload.put("state_class", "measurement");
+            humSensorPayload.put("unique_id", clientId + "_hum");
+            components.put(clientId + "_hum", humSensorPayload);
+        }
 
-        JSONObject luxSensorPayload = new JSONObject();
-        luxSensorPayload.put("p", "sensor");
-        luxSensorPayload.put("name", "Light");
-        luxSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_LUX_SENSOR));
-        luxSensorPayload.put("device_class", "illuminance");
-        luxSensorPayload.put("unit_of_measurement", "lx");
-        luxSensorPayload.put("state_class", "measurement");
-        luxSensorPayload.put("unique_id", clientId + "_lux");
-        components.put(clientId + "_lux", luxSensorPayload);
+        if (model.hasLightSensor) {
+            JSONObject luxSensorPayload = new JSONObject();
+            luxSensorPayload.put("p", "sensor");
+            luxSensorPayload.put("name", "Light");
+            luxSensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_LUX_SENSOR));
+            luxSensorPayload.put("device_class", "illuminance");
+            luxSensorPayload.put("unit_of_measurement", "lx");
+            luxSensorPayload.put("state_class", "measurement");
+            luxSensorPayload.put("unique_id", clientId + "_lux");
+            components.put(clientId + "_lux", luxSensorPayload);
+        }
 
         if (DeviceModel.getReportedDevice().hasProximitySensor) {
             JSONObject proximitySensorPayload = new JSONObject();
@@ -644,7 +667,8 @@ public class MQTTServer {
             proximitySensorPayload.put("unique_id", clientId + "_proximity");
             components.put(clientId + "_proximity", proximitySensorPayload);
 
-            // Wide-range presence sensor (gpio_keys KEY_F5 near / KEY_F6 far)
+            // Wide-range presence sensor (gpio_keys KEY_F5 near / KEY_F6 far), or proximity
+            // near/far on devices without one (NSPanel Pro)
             JSONObject presencePayload = new JSONObject();
             presencePayload.put("p", "binary_sensor");
             presencePayload.put("name", "Presence");
