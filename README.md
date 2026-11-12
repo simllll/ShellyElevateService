@@ -42,7 +42,7 @@ really has is exposed (HTTP API, MQTT discovery).
 | Shelly Wall Display (`STARGATE`) | `Stargate` | 1 | yes | yes | – | – | – | sysfs / Settings |
 | Shelly Wall Display 2 / X2 (`ATLANTIS`, `PEGASUS`) | `Atlantis`, `Pegasus` | 1 | yes | yes | yes | – | – | sysfs / Settings |
 | Shelly Wall Display XL (`BLAKE`) | `Blake` | 1 | yes | yes | yes | wide-range sensor | 4 | sysfs / Settings |
-| Sonoff NSPanel Pro 86 (`NSPANEL_PRO`) | `px30_evb` | – | – | yes | yes | from proximity | – | sysfs via root (`su`) |
+| Sonoff NSPanel Pro 86 (`NSPANEL_PRO`) | `px30_evb` | – | – | yes | yes | from proximity | – | Settings API (min = sysfs 10); sysfs via setuid `su` if present |
 
 Unknown models are treated as the original Shelly Wall Display. If detection picks the wrong
 profile, set `deviceModel` to one of the names in brackets (`""`/`auto` = detect; needs an API
