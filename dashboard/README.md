@@ -27,6 +27,14 @@ A running dashboard applies changes immediately. The activity runs in its own pr
 (`:dashboard`), so a crash never takes the background service down; after a crash it restarts
 itself (at most 3 times in 5 minutes).
 
+To keep the dashboard in front with the service's app watchdog (instead of the HA app), set
+`watchdogPackage` to `dashboard`; see "Native dashboard as watchdog target" in the main README:
+
+```sh
+adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
+    -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogPackage --es value dashboard
+```
+
 ## Architecture
 
 ```

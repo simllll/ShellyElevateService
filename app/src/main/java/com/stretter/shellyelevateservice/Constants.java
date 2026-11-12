@@ -13,6 +13,9 @@ public class Constants {
     //API token Intent (adb only, see ApiTokenReceiver)
     public static final String INTENT_SET_API_TOKEN = "com.stretter.shellyelevateservice.SET_API_TOKEN";
     public static final String INTENT_API_TOKEN_KEY = "token";
+    public static final String INTENT_SET_SETTING = "com.stretter.shellyelevateservice.SET_SETTING";
+    public static final String INTENT_SETTING_KEY = "key";
+    public static final String INTENT_SETTING_VALUE = "value";
 
     //Screen SP Keys
     public static final String SP_AUTOMATIC_BRIGHTNESS = "automaticBrightness";

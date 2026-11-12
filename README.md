@@ -168,6 +168,39 @@ curl -X POST http://<device-ip>:8080/settings \
   }'
 ```
 
+#### Native dashboard as watchdog target
+
+Set `watchdogPackage` to `dashboard` (or the own package name `com.stretter.shellyelevateservice`)
+to keep the built-in native dashboard (see [`dashboard/README.md`](dashboard/README.md)) in front
+instead of the HA app. The watchdog then checks the `:dashboard` process and starts
+`DashboardActivity` directly; `restart_app` kills only the dashboard process (never the service)
+and relaunches it after 500 ms. Switching between HA app and dashboard works at runtime; the next
+check runs immediately after the change.
+
+Without an HTTP API token, the watchdog settings can be changed via adb (the receiver is protected
+by `android.permission.DUMP` like the token receiver; only `watchdogPackage`, `watchdogEnabled`
+and `watchdogInterval` are accepted):
+
+```bash
+# switch to the native dashboard
+adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
+  -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogPackage --es value dashboard
+
+# back to the HA Companion app
+adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
+  -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogPackage \
+  --es value io.homeassistant.companion.android.minimal
+
+# enable/disable, interval in seconds
+adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
+  -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogEnabled --es value true
+adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
+  -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogInterval --es value 10
+```
+
+The broadcast result (`data="Set watchdogPackage = dashboard"` or `data="Rejected …"`) shows
+whether the value was accepted.
+
 ### Screen Dimming
 
 ```bash
@@ -265,7 +298,7 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 | `sleep` | any | Dim screen |
 | `wake` | any | Wake screen |
 | `reboot` | any | Reboot device |
-| `restart_app` | any | Force kill and restart the watchdog app |
+| `restart_app` | any | Force kill and restart the watchdog app (native dashboard: only its process) |
 | `update` | any | Re-publish discovery and all states |
 
 Retained messages on command topics are ignored (a retained `reboot` can never cause a reboot loop).
@@ -418,8 +451,8 @@ All settings can be configured via `POST /settings` with a JSON body.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `watchdogEnabled` | boolean | `false` | Enable app watchdog |
-| `watchdogPackage` | string | `io.homeassistant.companion.android.minimal` | Package name of app to keep running |
-| `watchdogInterval` | int | `10` | Check interval in seconds |
+| `watchdogPackage` | string | `io.homeassistant.companion.android.minimal` | Package name of app to keep running (`dashboard` = native dashboard) |
+| `watchdogInterval` | int | `10` | Check interval in seconds (changes apply from the next check) |
 
 ### Other Settings
 

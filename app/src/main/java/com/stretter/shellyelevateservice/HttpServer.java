@@ -30,6 +30,8 @@ import android.widget.Toast;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
+import com.stretter.shellyelevateservice.helper.ServiceHelper;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -427,10 +429,8 @@ public class HttpServer extends NanoHTTPD {
                         JSONObject jsonObject = new JSONObject(postData);
                         String packageName = jsonObject.optString("package", "io.homeassistant.companion.android.minimal");
                         try {
-                            Intent launchIntent = mApplicationContext.getPackageManager().getLaunchIntentForPackage(packageName);
+                            Intent launchIntent = ServiceHelper.watchdogLaunchIntent(mApplicationContext, packageName);
                             if (launchIntent != null) {
-                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                launchIntent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
                                 mApplicationContext.startActivity(launchIntent);
                                 jsonResponse.put("success", true);
                                 jsonResponse.put("package", packageName);

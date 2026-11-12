@@ -22,6 +22,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -29,6 +30,7 @@ import fi.iki.elonen.NanoHTTPD;
 import com.stretter.shellyelevateservice.helper.DeviceHelper;
 import com.stretter.shellyelevateservice.helper.DeviceSensorManager;
 import com.stretter.shellyelevateservice.helper.MediaHelper;
+import com.stretter.shellyelevateservice.helper.ServiceHelper;
 import com.stretter.shellyelevateservice.mqtt.MQTTServer;
 
 import static com.stretter.shellyelevateservice.Constants.*;
@@ -245,6 +247,7 @@ public class ShellyElevateService extends Service {
 
         // Restart app from MQTT
         lbm.registerReceiver(restartAppReceiver, new IntentFilter(INTENT_RESTART_APP));
+        lbm.registerReceiver(watchdogSettingsReceiver, new IntentFilter(INTENT_SETTINGS_CHANGED));
 
         // Brightness control from MQTT
         IntentFilter brightnessFilter = new IntentFilter();
@@ -329,11 +332,11 @@ public class ShellyElevateService extends Service {
         Log.i(TAG, "startAppWatchdog() called, enabled=" + enabled);
 
         String packageName = sharedPreferences.getString(SP_WATCHDOG_PACKAGE, DEFAULT_WATCHDOG_PACKAGE);
-        int interval = sharedPreferences.getInt(SP_WATCHDOG_INTERVAL, DEFAULT_WATCHDOG_INTERVAL);
 
-        // The periodic check is always scheduled and reads the setting on every run,
-        // so enabling the watchdog via HTTP/MQTT later takes effect without a service restart.
-        Log.i(TAG, "Starting app watchdog for package: " + packageName + " (interval: " + interval + "s)");
+        // The periodic check always runs and reads package, enabled flag and interval on every run,
+        // so switching the target (HA app <-> dashboard) via HTTP/MQTT/adb takes effect without a
+        // service restart. A settings change also triggers an immediate check.
+        Log.i(TAG, "Starting app watchdog for package: " + packageName + " (interval: " + watchdogInterval() + "s)");
 
         if (enabled) {
             // Launch the app immediately on startup
@@ -343,40 +346,72 @@ public class ShellyElevateService extends Service {
             Log.i(TAG, "App watchdog disabled in settings (checks will start once enabled)");
         }
 
-        // Schedule periodic checks
-        scheduler.scheduleWithFixedDelay(guarded("App watchdog", () -> {
-            if (!sharedPreferences.getBoolean(SP_WATCHDOG_ENABLED, false)) {
-                Log.d(TAG, "Watchdog: disabled, skipping check");
-                return;
-            }
-
-            String pkg = sharedPreferences.getString(SP_WATCHDOG_PACKAGE, DEFAULT_WATCHDOG_PACKAGE);
-            boolean inForeground = isAppInForeground(pkg);
-            Log.d(TAG, "Watchdog: checking " + pkg + ", inForeground=" + inForeground);
-
-            if (!inForeground) {
-                Log.w(TAG, "Watchdog: " + pkg + " is not in foreground, restarting...");
-                launchApp(pkg);
-            }
-        }), interval, interval, TimeUnit.SECONDS);
+        scheduleWatchdogTick(watchdogInterval());
     }
+
+    private int watchdogInterval() {
+        return WatchdogTarget.effectiveInterval(
+                sharedPreferences.getInt(SP_WATCHDOG_INTERVAL, DEFAULT_WATCHDOG_INTERVAL), DEFAULT_WATCHDOG_INTERVAL);
+    }
+
+    private final Runnable watchdogCheck = guarded("App watchdog", () -> {
+        if (!sharedPreferences.getBoolean(SP_WATCHDOG_ENABLED, false)) {
+            Log.d(TAG, "Watchdog: disabled, skipping check");
+            return;
+        }
+
+        String pkg = sharedPreferences.getString(SP_WATCHDOG_PACKAGE, DEFAULT_WATCHDOG_PACKAGE);
+        boolean inForeground = isAppInForeground(pkg);
+        Log.d(TAG, "Watchdog: checking " + pkg + ", inForeground=" + inForeground);
+
+        if (!inForeground) {
+            Log.w(TAG, "Watchdog: " + pkg + " is not in foreground, restarting...");
+            launchApp(pkg);
+        }
+    });
+
+    // Re-schedules itself with the current interval, so interval changes apply on the next run
+    private final Runnable watchdogTick = () -> {
+        watchdogCheck.run();
+        scheduleWatchdogTick(watchdogInterval());
+    };
+
+    private void scheduleWatchdogTick(int delaySeconds) {
+        try {
+            scheduler.schedule(watchdogTick, delaySeconds, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException e) {
+            Log.d(TAG, "Watchdog: scheduler shut down, stopping checks");
+        }
+    }
+
+    private final BroadcastReceiver watchdogSettingsReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            try {
+                scheduler.execute(watchdogCheck);
+            } catch (RejectedExecutionException ignored) {
+                // service is shutting down
+            }
+        }
+    };
 
     private boolean isAppInForeground(String packageName) {
         ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         if (activityManager == null) return false;
+
+        String processName = WatchdogTarget.processNameFor(packageName, getPackageName());
+        boolean internal = WatchdogTarget.isInternalDashboard(packageName, getPackageName());
 
         // When screen is off, apps won't be "foreground" - check if running at all
         List<ActivityManager.RunningAppProcessInfo> processes = activityManager.getRunningAppProcesses();
         if (processes == null) return false;
 
         for (ActivityManager.RunningAppProcessInfo process : processes) {
-            if (process.processName.equals(packageName)) {
-                // If screen is off (dimmed), consider "visible" or better as OK
-                if (isDimmed) {
-                    return process.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE;
-                }
-                // If screen is on, require foreground
-                return process.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
+            if (process.processName.equals(processName) && (!internal || process.uid == android.os.Process.myUid())) {
+                // If screen is off (dimmed), "visible" or better is OK; if on, require foreground.
+                // The dashboard process hosts only DashboardActivity (+ its config receiver), so
+                // foreground importance means the dashboard is the resumed activity.
+                return WatchdogTarget.isFrontImportance(process.importance, isDimmed);
             }
         }
         return false;
@@ -385,11 +420,9 @@ public class ShellyElevateService extends Service {
     private void launchApp(String packageName) {
         Log.i(TAG, "launchApp() called for: " + packageName);
         try {
-            Intent launchIntent = getPackageManager().getLaunchIntentForPackage(packageName);
+            Intent launchIntent = ServiceHelper.watchdogLaunchIntent(this, packageName);
             Log.i(TAG, "launchIntent=" + launchIntent);
             if (launchIntent != null) {
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
                 startActivity(launchIntent);
                 Log.i(TAG, "Launched app successfully: " + packageName);
             } else {
@@ -403,17 +436,23 @@ public class ShellyElevateService extends Service {
     /**
      * Force kills and restarts the watchdog app.
      * Called via MQTT restart_app command.
+     * For our own dashboard only the :dashboard process is killed: "am force-stop" on our own
+     * package would also kill this service.
      */
     private void restartWatchdogApp() {
         String packageName = sharedPreferences.getString(SP_WATCHDOG_PACKAGE, DEFAULT_WATCHDOG_PACKAGE);
         Log.i(TAG, "Restarting watchdog app: " + packageName);
 
-        // Force stop the app using am force-stop command
-        try {
-            Runtime.getRuntime().exec("am force-stop " + packageName);
-            Log.i(TAG, "Force stopped app: " + packageName);
-        } catch (IOException e) {
-            Log.w(TAG, "Could not force stop app: " + e.getMessage());
+        if (WatchdogTarget.isInternalDashboard(packageName, getPackageName())) {
+            killDashboardProcess();
+        } else {
+            // Force stop the app using am force-stop command
+            try {
+                Runtime.getRuntime().exec("am force-stop " + packageName);
+                Log.i(TAG, "Force stopped app: " + packageName);
+            } catch (IOException e) {
+                Log.w(TAG, "Could not force stop app: " + e.getMessage());
+            }
         }
 
         // Wait a moment then relaunch
@@ -421,6 +460,25 @@ public class ShellyElevateService extends Service {
             Log.i(TAG, "Relaunching app: " + packageName);
             launchApp(packageName);
         }, 500);
+    }
+
+    private void killDashboardProcess() {
+        ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        List<ActivityManager.RunningAppProcessInfo> processes =
+                activityManager == null ? null : activityManager.getRunningAppProcesses();
+        if (processes == null) return;
+
+        String processName = WatchdogTarget.dashboardProcessName(getPackageName());
+        int myUid = android.os.Process.myUid();
+        int myPid = android.os.Process.myPid();
+        for (ActivityManager.RunningAppProcessInfo process : processes) {
+            if (process.processName.equals(processName) && process.uid == myUid && process.pid != myPid) {
+                Log.i(TAG, "Killing dashboard process pid=" + process.pid);
+                android.os.Process.killProcess(process.pid);
+                return;
+            }
+        }
+        Log.i(TAG, "Dashboard process not running, just launching it");
     }
 
     // === Screen Dim/Wake ===
@@ -676,6 +734,7 @@ public class ShellyElevateService extends Service {
         lbm.unregisterReceiver(lightReceiver);
         lbm.unregisterReceiver(wakeSleepReceiver);
         lbm.unregisterReceiver(restartAppReceiver);
+        lbm.unregisterReceiver(watchdogSettingsReceiver);
         lbm.unregisterReceiver(brightnessReceiver);
 
         // Stop input reader
