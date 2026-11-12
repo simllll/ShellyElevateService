@@ -16,6 +16,8 @@ object CardCatalog {
         registry.register("entities") { EntitiesCard(it) }
         registry.register("tile") { TileCard(it) }
         registry.register("entity") { EntityCard(it) }
+        registry.register("energy-date-selection") { EnergyDateSelectionCard(it) }
+        registry.register("energy-devices-detail-graph") { EnergyDevicesDetailGraphCard(it) }
         registry.register("button") { ButtonCard(it) }
         registry.register("markdown") { MarkdownCard(it) }
         registry.register("picture") { PictureCard(it) }

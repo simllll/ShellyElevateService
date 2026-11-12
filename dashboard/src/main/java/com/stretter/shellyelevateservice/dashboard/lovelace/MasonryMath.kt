@@ -80,6 +80,8 @@ object MasonryMath {
         "alarm-panel" -> 10.0
         "custom:fab-card" -> 0.0
         "entity" -> 2.0
+        "energy-date-selection" -> 1.0
+        "energy-devices-detail-graph" -> 3.0
         "custom:mushroom-climate-card" -> 1.0 + (if (config.bool("show_temperature_control") == true) 1 else 0)
         "custom:button-card" -> (config.int("card_size")?.takeIf { it != 0 } ?: 3).toDouble()
         "custom:auto-entities" -> autoEntitiesSize(config)

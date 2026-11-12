@@ -59,7 +59,7 @@ DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardR
 | `hass` | `HassClient`, `EntityStore` (compressed `subscribe_entities` diffs), `EntitySubscriptionPlanner` (ref-counted entity filters), `EntityLogic` (`isActive`, toggle services) |
 | `lovelace` | `SectionsView`, `GridSection`, `MasonryView`, `CardGrid`/`SectionsGrid`/`StretchRow` layouts, `GridMath` (CSS grid placement + track sizing), `MasonryMath` (column count, card sizes, column assignment) |
 | `badges` | View badges: `BadgeSpec` (config parsing/migration), `ViewBadges` (entity badge, `custom:mushroom-template-badge`) |
-| `cards` | `CardRenderer` API, `CardContext`, `CardRegistry`, `CardCatalog`, `HaCard`, `StateBadge`, core cards |
+| `cards` | `CardRenderer` API, `CardContext`, `CardRegistry`, `CardCatalog`, `HaCard`, `StateBadge`, core cards (incl. `entity`, and `energy-date-selection` / `energy-devices-detail-graph` simplified to day periods: stacked hourly device bars + untracked consumption) |
 | `rows` | `RowRenderer` API, `RowRegistry`, `GenericEntityRow` and the core rows |
 | `actions` | `ActionHandler`, `Modifier.haActions`, `Navigator` |
 | `popup` | `PopupHost`, `HashPopup`, `HaDialog`, browser_mod popup, more-info dialog, toasts |
