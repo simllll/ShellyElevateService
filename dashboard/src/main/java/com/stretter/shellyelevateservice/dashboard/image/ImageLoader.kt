@@ -132,13 +132,17 @@ fun RemoteImage(
     alignment: Alignment = Alignment.Center,
     refreshKey: Any? = null,
     contentDescription: String? = null,
+    /** Called after each load attempt: false when the image could not be loaded or decoded. */
+    onResult: ((loaded: Boolean) -> Unit)? = null,
 ) {
     var size by remember { mutableStateOf(IntSize.Zero) }
     var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
     if (url != null && size.width > 0) {
         LaunchedEffect(url, size.width, refreshKey) {
             val fresh = refreshKey != null && bitmap != null
-            loader.load(url, size.width, bypassCache = fresh)?.let { bitmap = it }
+            val loaded = loader.load(url, size.width, bypassCache = fresh)
+            loaded?.let { bitmap = it }
+            onResult?.invoke(loaded != null || bitmap != null)
         }
     }
     val image = bitmap

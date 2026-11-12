@@ -15,7 +15,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -165,6 +169,7 @@ private fun MushroomTemplateBadge(spec: BadgeSpec.MushroomTemplate, ctx: CardCon
     val content = templateValue(ctx, spec.content, spec)
     val label = templateValue(ctx, spec.label, spec)
     val picture = templateValue(ctx, spec.picture, spec)
+    var pictureFailed by remember(picture) { mutableStateOf(false) }
     if (content == null && icon == null && picture == null) return
     // `--badge-color` unset → the icon inherits the text color.
     val color = colorValue?.let { CssColors.computeCssColor(it) } ?: c.primaryText
@@ -173,14 +178,16 @@ private fun MushroomTemplateBadge(spec: BadgeSpec.MushroomTemplate, ctx: CardCon
     BadgePill(
         padding = when {
             content == null -> PaddingValues(0.dp)
-            picture != null -> PaddingValues(start = 2.dp, end = 8.dp)
+            picture != null && !pictureFailed -> PaddingValues(start = 2.dp, end = 8.dp)
             else -> PaddingValues(horizontal = 8.dp)
         },
         gap = 8.dp,
         modifier = Modifier.haActions(ctx, spec.config, defaultTap = NONE, pressColor = color, enabled = ActionHandler.isInteractive(spec.config, defaultTap = false)),
     ) {
-        if (picture != null) RemoteImage(ctx.images, picture, Modifier.size(30.dp).clip(CircleShape))
-        else if (icon != null) MdiIcon(icon, color, size = 18.dp)
+        // A picture that fails to load (404, SVG the renderer rejects) falls back to the icon.
+        if (picture != null && !pictureFailed) {
+            RemoteImage(ctx.images, picture, Modifier.size(30.dp).clip(CircleShape), onResult = { pictureFailed = !it })
+        } else if (icon != null) MdiIcon(icon, color, size = 18.dp)
         if (content != null) {
             BadgeInfo(
                 label,
