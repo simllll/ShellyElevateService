@@ -18,15 +18,15 @@ object CardCatalog {
         registry.register("vertical-stack") { VerticalStackCard(it) }
         registry.register("horizontal-stack") { HorizontalStackCard(it) }
         registry.register("grid") { GridCard(it) }
+        registry.register("weather-forecast") { WeatherForecastCard(it) }
+        registry.register("history-graph") { HistoryGraphCard(it) }
+        registry.register("custom:refreshable-picture-card") { RefreshablePictureCard(it) }
         // Custom cards (implemented separately):
         // registry.register("custom:button-card") { ... }
         // registry.register("custom:bubble-card") { ... }
         // registry.register("custom:auto-entities") { ... }
         // registry.register("custom:mushroom-template-card") { ... }
         // registry.register("custom:xiaomi-vacuum-map-card") { ... }
-        // registry.register("custom:refreshable-picture-card") { ... }
-        // registry.register("weather-forecast") { ... }
-        // registry.register("history-graph") { ... }
     }
 
     fun registerRows(registry: RowRegistry) {
