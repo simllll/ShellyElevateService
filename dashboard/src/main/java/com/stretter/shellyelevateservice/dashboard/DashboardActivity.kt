@@ -34,7 +34,14 @@ class DashboardActivity : ComponentActivity() {
         hideSystemBars()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             // Kiosk: back closes popups, then walks back the view history; it never leaves the dashboard.
+            // Guest lock: back only closes popups (they stay usable); otherwise it shows the lock.
             override fun handleOnBackPressed() {
+                if (runtime.guestLock.locked) {
+                    if (!runtime.popups.isShowingPopup || !runtime.popups.handleBack()) {
+                        runtime.guestLock.onTouch(System.currentTimeMillis())
+                    }
+                    return
+                }
                 if (!runtime.popups.handleBack()) runtime.navigator.back()
             }
         })

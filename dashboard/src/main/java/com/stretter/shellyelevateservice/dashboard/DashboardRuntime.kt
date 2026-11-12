@@ -17,6 +17,8 @@ import com.stretter.shellyelevateservice.dashboard.hass.HassClient
 import com.stretter.shellyelevateservice.dashboard.icons.IconResolver
 import com.stretter.shellyelevateservice.dashboard.image.ImageLoader
 import com.stretter.shellyelevateservice.dashboard.json.asObject
+import com.stretter.shellyelevateservice.dashboard.lock.GuestLock
+import com.stretter.shellyelevateservice.dashboard.lock.GuestLockConfig
 import com.stretter.shellyelevateservice.dashboard.json.jsonOf
 import com.stretter.shellyelevateservice.dashboard.json.objects
 import com.stretter.shellyelevateservice.dashboard.json.string
@@ -84,6 +86,12 @@ class DashboardRuntime private constructor(context: Context) {
     /** See [DashboardSettings.returnHomeAfterS]. */
     val returnHomeAfterS: StateFlow<Int> = _returnHomeAfterS.asStateFlow()
 
+    private val _guestLockConfig = MutableStateFlow(settings.guestLock)
+
+    /** See [DashboardSettings.guestLock]. */
+    val guestLockConfig: StateFlow<GuestLockConfig> = _guestLockConfig.asStateFlow()
+    val guestLock = GuestLock()
+
     private val _lovelace = MutableStateFlow<LovelaceState>(LovelaceState.NotConfigured)
     val lovelace: StateFlow<LovelaceState> = _lovelace.asStateFlow()
 
@@ -114,6 +122,7 @@ class DashboardRuntime private constructor(context: Context) {
         hass.configure(config)
         browserMod.setBrowserId(settings.browserId)
         _returnHomeAfterS.value = settings.returnHomeAfterS
+        _guestLockConfig.value = settings.guestLock
         val urlPath = settings.dashboard
         if (dashboardJob != null && urlPath == dashboardPath) return
         val switched = dashboardJob != null

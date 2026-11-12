@@ -18,7 +18,9 @@ import android.util.Log
  *
  * Optional: `--es scale 0.75` (see [DashboardSettings.scale]),
  * `--es browser_id 'walldisplay Eingang'` (see [DashboardSettings.browserId]),
- * `--es return_home_after_s 60` (see [DashboardSettings.returnHomeAfterS]; 0 = off).
+ * `--es return_home_after_s 60` (see [DashboardSettings.returnHomeAfterS]; 0 = off),
+ * `--es lock_entity binary_sensor.x`, `--es lock_video /local/x.mp4`, `--es lock_sleep_after_s 10`
+ * (guest lock, see [DashboardSettings.guestLock]; `none` turns the lock or its video off).
  *
  * A running dashboard (same process) picks the change up immediately.
  */

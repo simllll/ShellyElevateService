@@ -32,6 +32,7 @@ import com.stretter.shellyelevateservice.dashboard.hass.ConnectionState
 import com.stretter.shellyelevateservice.dashboard.icons.MdiIcon
 import com.stretter.shellyelevateservice.dashboard.json.objects
 import com.stretter.shellyelevateservice.dashboard.json.string
+import com.stretter.shellyelevateservice.dashboard.lock.GuestLockLayer
 import com.stretter.shellyelevateservice.dashboard.lovelace.MasonryView
 import com.stretter.shellyelevateservice.dashboard.lovelace.SectionsView
 import com.stretter.shellyelevateservice.dashboard.lovelace.SwipeNavConfig
@@ -73,6 +74,9 @@ fun DashboardScreen(runtime: DashboardRuntime) {
                 is LovelaceState.Error -> Message("mdi:alert-outline", "Dashboard konnte nicht geladen werden", state.message)
             }
             runtime.popups.FloatingLayer()
+            // Above the view, below every popup: browser_mod popups (alarm keypad) stay usable.
+            val lockConfig by runtime.guestLockConfig.collectAsState()
+            GuestLockLayer(runtime.guestLock, lockConfig, runtime.cardContext)
             runtime.popups.Layer(runtime.cardContext)
             runtime.buttonFeedback.Layer()
             ConnectionIndicator(connection)

@@ -27,6 +27,9 @@ All extras are optional; an empty value clears a setting. `--es scale 0.75` zoom
 `--es browser_id 'walldisplay Eingang'` sets the browser_mod id (see below).
 `--es return_home_after_s 60` sets how long (seconds without a touch) the dashboard stays on
 another view before returning to the first one (default 120, `0` = never).
+Guest lock (see below): `--es lock_entity binary_sensor.lock_dashboards` (default; `none` = off),
+`--es lock_video /local/screensaver.mp4` (default; `none` = no video),
+`--es lock_sleep_after_s 10` (default).
 A running dashboard applies changes immediately. The activity runs in its own process
 (`:dashboard`), so a crash never takes the background service down; after a crash it restarts
 itself (at most 3 times in 5 minutes).
@@ -194,6 +197,25 @@ key-down, so a small pill ("Taste 2") appears at the top center immediately; whe
 detected (single after the 300 ms double-click window, long after 500 ms) the same pill is
 relabeled ("Taste 2 · 2×", "Taste 2 · lang"). It disappears 1.5 s after the button's last event,
 or when the next browser_mod popup arrives.
+
+### Guest lock
+
+While the lock entity (`lock_entity`, default `binary_sensor.lock_dashboards`) is `on`, the
+dashboard looks and updates as usual, but no touch reaches it: a transparent layer above the view
+and the floating buttons swallows every gesture (tap, swipe, scroll, long press) and the back key.
+A touch instead shows the lock overlay, the `lock_video` (muted, looped, letterboxed on black,
+via the dashboard URL with the token) with a lock icon and "Gesperrt". Every further touch
+restarts the timer; `lock_sleep_after_s` after the last touch the overlay closes and the
+dashboard asks the service to put the display to sleep now (same path as MQTT `sleep`; the
+lock stays, so the next touch after waking shows the overlay again). The layer sits below the
+popup layer, so popups opened by automations (browser_mod popups such as the alarm keypad,
+notifications, more-info, bubble-card pop-ups opened by `trigger_entity`) appear above it and stay
+usable, and the back key still closes them. Hardware buttons are not affected. When the entity
+turns `off` the overlay disappears at once; while it is `unavailable`/`unknown` (or HA is not
+connected) the last known state is kept.
+
+The sleep request is a package-restricted broadcast (`GuestLockContract.ACTION_SLEEP`) to a
+not-exported receiver of the service (the dashboard runs in its own process).
 
 ## Adding a card type
 

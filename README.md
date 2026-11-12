@@ -248,6 +248,10 @@ change in HA shows up without touching the device.
 - browser_mod emulation: registers as a browser_mod browser, so popups, notifications, navigate
   and the browser's media player (TTS) from existing automations keep working.
 - Instant on-screen feedback for the hardware buttons.
+- Guest lock: while an HA entity (default `binary_sensor.lock_dashboards`) is on, touches only show
+  a lock screen and the display goes back to sleep after 10 s; automation popups (alarm keypad)
+  stay usable. The dashboard asks the service to sleep through a not-exported broadcast receiver
+  (`GuestLockContract.ACTION_SLEEP`, same path as MQTT `sleep`).
 
 Setup, the full list of supported cards and the limitations are in
 [`dashboard/README.md`](dashboard/README.md). Use `watchdogPackage` `dashboard` to keep it in

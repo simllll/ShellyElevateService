@@ -3,6 +3,7 @@ package com.stretter.shellyelevateservice.dashboard
 import android.content.Context
 import android.content.SharedPreferences
 import com.stretter.shellyelevateservice.dashboard.hass.HassConfig
+import com.stretter.shellyelevateservice.dashboard.lock.GuestLockConfig
 
 /**
  * Persistent dashboard settings (SharedPreferences `dashboard`, private to the `:dashboard` process).
@@ -39,6 +40,23 @@ class DashboardSettings(context: Context) {
         get() = prefs.getString(KEY_RETURN_HOME_AFTER_S, null)?.trim()?.toDoubleOrNull()?.toInt()?.coerceAtLeast(0)
             ?: DEFAULT_RETURN_HOME_AFTER_S
 
+    /**
+     * Guest lock (see `GuestLock`): `lock_entity` (default `binary_sensor.lock_dashboards`, `none`
+     * = off), `lock_video` (default `/local/screensaver.mp4`, `none` = no video) and
+     * `lock_sleep_after_s` (default 10).
+     */
+    val guestLock: GuestLockConfig
+        get() = GuestLockConfig(
+            entity = optionalSetting(KEY_LOCK_ENTITY, GuestLockConfig.DEFAULT_ENTITY),
+            video = optionalSetting(KEY_LOCK_VIDEO, GuestLockConfig.DEFAULT_VIDEO),
+            sleepAfterS = prefs.getString(KEY_LOCK_SLEEP_AFTER_S, null)?.trim()?.toDoubleOrNull()?.toInt()?.coerceAtLeast(1)
+                ?: GuestLockConfig.DEFAULT_SLEEP_AFTER_S,
+        )
+
+    /** The stored value, else [default]; `none` = null. */
+    private fun optionalSetting(key: String, default: String): String? =
+        (prefs.getString(key, null)?.trim()?.takeIf { it.isNotEmpty() } ?: default).takeUnless { it.equals("none", ignoreCase = true) }
+
     val hassConfig: HassConfig?
         get() {
             val u = url ?: return null
@@ -54,8 +72,12 @@ class DashboardSettings(context: Context) {
         const val KEY_SCALE = "scale"
         const val KEY_BROWSER_ID = "browser_id"
         const val KEY_RETURN_HOME_AFTER_S = "return_home_after_s"
+        const val KEY_LOCK_ENTITY = "lock_entity"
+        const val KEY_LOCK_VIDEO = "lock_video"
+        const val KEY_LOCK_SLEEP_AFTER_S = "lock_sleep_after_s"
         const val DEFAULT_BROWSER_ID = "walldisplay Wohnbereich"
         const val DEFAULT_RETURN_HOME_AFTER_S = 120
-        val ALL_KEYS = listOf(KEY_URL, KEY_TOKEN, KEY_DASHBOARD, KEY_SCALE, KEY_BROWSER_ID, KEY_RETURN_HOME_AFTER_S)
+        val ALL_KEYS = listOf(KEY_URL, KEY_TOKEN, KEY_DASHBOARD, KEY_SCALE, KEY_BROWSER_ID, KEY_RETURN_HOME_AFTER_S,
+            KEY_LOCK_ENTITY, KEY_LOCK_VIDEO, KEY_LOCK_SLEEP_AFTER_S)
     }
 }

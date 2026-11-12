@@ -18,6 +18,7 @@ import android.os.Looper;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.io.IOException;
@@ -34,6 +35,7 @@ import com.stretter.shellyelevateservice.helper.MediaHelper;
 import com.stretter.shellyelevateservice.helper.ScreenOffTimeoutStrategy;
 import com.stretter.shellyelevateservice.helper.ScreenPowerStrategy;
 import com.stretter.shellyelevateservice.helper.ServiceHelper;
+import com.stretter.shellyelevateservice.dashboard.lock.GuestLockContract;
 import com.stretter.shellyelevateservice.dashboard.popup.ButtonFeedbackContract;
 import com.stretter.shellyelevateservice.mqtt.MQTTServer;
 
@@ -124,6 +126,15 @@ public class ShellyElevateService extends Service {
                 Log.i(TAG, "Calling wakeScreen() from broadcast");
                 wakeScreen();
             }
+        }
+    };
+
+    // Sleep request from the native dashboard's guest lock (:dashboard process, see GuestLockContract)
+    private final BroadcastReceiver dashboardSleepReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.i(TAG, "Dashboard guest lock requests sleep");
+            dimScreen();
         }
     };
 
@@ -277,6 +288,11 @@ public class ShellyElevateService extends Service {
         brightnessFilter.addAction(INTENT_SET_BRIGHTNESS);
         brightnessFilter.addAction(INTENT_SET_AUTO_BRIGHTNESS);
         lbm.registerReceiver(brightnessReceiver, brightnessFilter);
+
+        // Cross-process (LocalBroadcastManager is per process): not exported, so only our own
+        // :dashboard process can ask for sleep. Same path as MQTT `sleep`.
+        ContextCompat.registerReceiver(this, dashboardSleepReceiver,
+                new IntentFilter(GuestLockContract.ACTION_SLEEP), ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     private void startIdleChecker() {
@@ -837,6 +853,11 @@ public class ShellyElevateService extends Service {
         lbm.unregisterReceiver(restartAppReceiver);
         lbm.unregisterReceiver(watchdogSettingsReceiver);
         lbm.unregisterReceiver(brightnessReceiver);
+        try {
+            unregisterReceiver(dashboardSleepReceiver);
+        } catch (IllegalArgumentException ignored) {
+            // not registered
+        }
 
         // Stop input reader
         if (inputEventReader != null) {
