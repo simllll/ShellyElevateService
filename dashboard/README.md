@@ -117,6 +117,20 @@ watchdog heartbeat) is run as a service call, anything else is logged and ignore
 HTML popup content is drawn natively by `html/Html.kt` (block/inline elements, `ha-icon`,
 inline styles for color, font size/weight, opacity, alignment, margins and paddings).
 
+browser_mod's `media_player.<browser>` (e.g. `media_player.walldisplay_eingang`) is emulated by
+`BrowserModPlayer` with Android's `MediaPlayer`: `media_player.play_media` (with or without
+`announce`), `tts.speak` (`media_player_entity_id`), `volume_set`, `volume_mute`, `media_play`,
+`media_pause`, `media_stop`, `media_seek`, `turn_off`. Relative URLs such as
+`/api/tts_proxy/….mp3` (signed by HA) are resolved against the dashboard URL; URLs on HA's
+`internal_url`/`external_url` are moved to the dashboard URL as well, and only requests to HA
+carry the token. `volume_level` is the media stream volume of the device (the one the service's
+MQTT volume sets; hardware/MQTT changes are reported back), `volume_mute` mutes only this player.
+`announce: true` (which `tts.speak` sends) plays on a separate player (`USAGE_ASSISTANT`,
+transient audio focus) and resumes paused media afterwards. State, volume, mute, source, duration
+and position are reported like browser_mod.js (`browser_mod/update {player}`; position every
+10 s while playing). Playback runs in the dashboard process and continues while the activity is
+stopped or the screen is off. Video URLs play their audio only.
+
 ### Hardware buttons
 
 HA automations stay the source of truth for the four hardware buttons (MQTT `button_event`,

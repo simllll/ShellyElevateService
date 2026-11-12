@@ -22,6 +22,7 @@ import kotlinx.serialization.json.JsonObject
  * registers if needed, reports the `browser` sensors (path, visibility, size, user, …) and the
  * activity sensor, and runs the commands HA sends (popup, close_popup, notification, navigate,
  * refresh, more_info, sequence, javascript heartbeat) through [ActionHandler.browserModCommand].
+ * `player-*` commands go to [player] (`media_player.<browser>`), whose state is reported back.
  *
  * All state lives on the main thread ([scope] must use the main dispatcher).
  */
@@ -30,6 +31,7 @@ class BrowserMod(
     private val actions: ActionHandler,
     private val scope: CoroutineScope,
     private val pathProvider: () -> String,
+    private val player: BrowserModPlayer? = null,
 ) {
     /** Current browser id; null disables browser_mod. */
     var browserId: String? = null
@@ -42,6 +44,7 @@ class BrowserMod(
     private var width = 0
     private var height = 0
     private var lastSent: JsonObject? = null
+    private var lastPlayerSent: JsonObject? = null
     private var activity = false
     private var activityReset: Job? = null
 
@@ -49,12 +52,14 @@ class BrowserMod(
     private var epoch = 0
 
     init {
+        player?.onStateChanged = ::sendPlayer
         scope.launch {
             // A new connection re-sends the connect subscription; state must be reported again.
             hass.connectionState.collect {
                 if (it !is ConnectionState.Connected) {
                     ready = false
                     lastSent = null
+                    lastPlayerSent = null
                     epoch++
                 }
             }
@@ -133,13 +138,25 @@ class BrowserMod(
         }
         ready = true
         lastSent = null
+        lastPlayerSent = null
         sendState()
         sendActivity()
+        sendPlayer()
     }
 
     private fun onCommand(command: BrowserModProtocol.Event.Command) {
         Log.i(TAG, "command ${command.name}")
         val data = JsonObject(command.data - BrowserModProtocol.TARGET_KEYS)
+        if (command.name.startsWith(PlayerCommand.PREFIX)) {
+            val parsed = PlayerCommand.parse(command.name, data)
+            if (parsed == null || player == null) Log.i(TAG, "player command ignored: ${command.name}")
+            else try {
+                player.handle(parsed)
+            } catch (e: Exception) {
+                Log.w(TAG, "browser_mod command ${command.name} failed", e)
+            }
+            return
+        }
         try {
             actions.browserModCommand(command.name, data)
         } catch (e: Exception) {
@@ -183,6 +200,17 @@ class BrowserMod(
         val id = browserId ?: return
         if (!ready) return
         hass.send(BrowserModProtocol.update(id, BrowserModProtocol.activity(activity)))
+    }
+
+    /** `media_player.<browser>` state (sent unchanged values are skipped). */
+    private fun sendPlayer() {
+        val id = browserId ?: return
+        val p = player ?: return
+        if (!ready) return
+        val data = p.state.toUpdateData()
+        if (data == lastPlayerSent) return
+        lastPlayerSent = data
+        hass.send(BrowserModProtocol.update(id, data))
     }
 
     private fun sendState() {

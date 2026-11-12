@@ -7,6 +7,7 @@ import androidx.compose.runtime.snapshotFlow
 import com.stretter.shellyelevateservice.dashboard.actions.ActionHandler
 import com.stretter.shellyelevateservice.dashboard.actions.Navigator
 import com.stretter.shellyelevateservice.dashboard.browsermod.BrowserMod
+import com.stretter.shellyelevateservice.dashboard.browsermod.BrowserModPlayer
 import com.stretter.shellyelevateservice.dashboard.cards.CardCatalog
 import com.stretter.shellyelevateservice.dashboard.cards.CardContext
 import com.stretter.shellyelevateservice.dashboard.cards.CardRegistry
@@ -61,7 +62,8 @@ class DashboardRuntime private constructor(context: Context) {
     val navigator = Navigator(popups)
     val buttonFeedback = ButtonFeedback(popups)
     val actions = ActionHandler(hass, popups, navigator, scope)
-    val browserMod = BrowserMod(hass, actions, scope, ::browserPath)
+    val player = BrowserModPlayer(context, hass, scope)
+    val browserMod = BrowserMod(hass, actions, scope, ::browserPath, player)
     val cards = CardRegistry().also(CardCatalog::registerCards)
     val rows = RowRegistry().also(CardCatalog::registerRows)
     val images = ImageLoader(hass, context.cacheDir)
@@ -152,7 +154,9 @@ class DashboardRuntime private constructor(context: Context) {
     /** State translations and default icons, in the HA user's language. */
     private suspend fun loadFrontendResources() {
         try {
-            val language = hass.getConfig().string("language") ?: formatter.language
+            val config = hass.getConfig()
+            player.haUrls = listOfNotNull(config.string("internal_url"), config.string("external_url"))
+            val language = config.string("language") ?: formatter.language
             val translations = hass.getTranslations(language, "entity_component")
             formatter.setTranslations(language, translations)
         } catch (e: Exception) {
