@@ -45,6 +45,8 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.androidsvg)
 
     implementation(platform(libs.okhttpbom))
     implementation(libs.okhttp)

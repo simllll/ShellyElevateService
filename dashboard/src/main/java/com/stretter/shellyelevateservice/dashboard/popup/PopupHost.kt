@@ -26,6 +26,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
 import com.stretter.shellyelevateservice.dashboard.cards.CardContext
@@ -232,9 +235,12 @@ class PopupHost {
                 if (toast?.id == current.id) toast = null
             }
         }
-        Box(Modifier.fillMaxSize().padding(bottom = 16.dp), contentAlignment = Alignment.BottomCenter) {
+        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            val narrow = isNarrowDialogScreen(maxWidth, maxHeight)
             ToastBox(
                 current,
+                narrow = narrow,
+                modifier = if (narrow) Modifier.width(maxWidth) else Modifier.padding(bottom = 16.dp),
                 onAction = { toast = null; current.onAction() },
                 onClose = { toast = null },
             )
@@ -247,15 +253,24 @@ class PopupHost {
     }
 }
 
-/** `ha-toast`: neutral-10 surface, 4px radius, 350–650px wide, 48px high, 12/16px padding. */
+/**
+ * `ha-toast`: neutral-10 surface, 4px radius, 350–650px wide, 48px high, 12/16px padding; on
+ * [narrow] screens full width with square corners.
+ */
 @Composable
-private fun ToastBox(notification: PopupHost.Notification, onAction: () -> Unit, onClose: () -> Unit) {
+private fun ToastBox(
+    notification: PopupHost.Notification,
+    narrow: Boolean,
+    modifier: Modifier,
+    onAction: () -> Unit,
+    onClose: () -> Unit,
+) {
     val t = HaTheme.typography
     val c = HaTheme.colors
-    val shape = RoundedCornerShape(HaTheme.dimens.radiusSm)
+    val shape = if (narrow) RectangleShape else RoundedCornerShape(HaTheme.dimens.radiusSm)
     Row(
-        Modifier
-            .widthIn(min = 350.dp, max = 650.dp)
+        modifier
+            .then(if (narrow) Modifier else Modifier.widthIn(min = 350.dp, max = 650.dp))
             .heightIn(min = 48.dp)
             .shadow(8.dp, shape)
             .background(HaPalette.Neutral10, shape)

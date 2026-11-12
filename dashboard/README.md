@@ -39,6 +39,7 @@ adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver 
 
 ```
 DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardRenderer.Content
+                                    └ MasonryView ─ ViewBadges, columns ─ CardRenderer.Content
         │                 │ PopupHost.Layer (more-info, browser_mod, bubble pop-ups, toasts)
         └ DashboardRuntime (process singleton)
              ├ HassClient        WebSocket API, reconnect, per-entity StateFlows
@@ -54,7 +55,8 @@ DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardR
 | Package | Contents |
 |---|---|
 | `hass` | `HassClient`, `EntityStore` (compressed `subscribe_entities` diffs), `EntitySubscriptionPlanner` (ref-counted entity filters), `EntityLogic` (`isActive`, toggle services) |
-| `lovelace` | `SectionsView`, `GridSection`, `CardGrid`/`SectionsGrid`/`StretchRow` layouts, `GridMath` (CSS grid placement + track sizing) |
+| `lovelace` | `SectionsView`, `GridSection`, `MasonryView`, `CardGrid`/`SectionsGrid`/`StretchRow` layouts, `GridMath` (CSS grid placement + track sizing), `MasonryMath` (column count, card sizes, column assignment) |
+| `badges` | View badges: `BadgeSpec` (config parsing/migration), `ViewBadges` (entity badge, `custom:mushroom-template-badge`) |
 | `cards` | `CardRenderer` API, `CardContext`, `CardRegistry`, `CardCatalog`, `HaCard`, `StateBadge`, core cards |
 | `rows` | `RowRenderer` API, `RowRegistry`, `GenericEntityRow` and the core rows |
 | `actions` | `ActionHandler`, `Modifier.haActions`, `Navigator` |
@@ -64,7 +66,7 @@ DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardR
 | `theme` | `HaTheme` tokens (colors, typography, dimensions) and `CssColors` (CSS colors, state colors) |
 | `icons` | MDI webfont (`assets/mdi.ttf`) + name map (`assets/mdi-map.txt`), `MdiIcon` |
 | `markdown` | Markdown subset parser and renderer (`ha-markdown` look) |
-| `format`, `image`, `ui`, `json` | formatting, image loading, controls (`HaSwitch`, `HaButton`, …), lenient JSON accessors |
+| `format`, `image`, `ui`, `json` | formatting, image loading (bitmaps and SVG via AndroidSVG), controls (`HaSwitch`, `HaButton`, `LoopingVideo`, …), lenient JSON accessors |
 | `custom` | HACS cards: `button-card` (+ tiny JS-template evaluator, no JS engine), `auto-entities` (filter/sort engine, registry on demand via `get_entries`), `mushroom-template-card`, `template-entity-row`, `timer-bar-card` |
 
 ### Layout fidelity
@@ -76,6 +78,23 @@ DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardR
 `rows × 64 − 8` px, auto cards their content height, stretched to the row (CSS
 `align-items: stretch`, via intrinsic measurement). Sizes come from `CardRenderer.gridOptions()`
 merged with the config's `grid_options` (legacy `layout_options` are migrated).
+
+`MasonryView` (views without `type`, or `masonry`) follows `hui-masonry-view`: one column per
+matching `min-width` breakpoint (300/600/900/1200px, so a 480px panel has one column), columns
+`flex: 1 0 0` up to 500px (600px below 600px width), centered, 4px outer margins, cards with
+`4px 4px 8px` margins (the frontend's narrow-screen rule that drops the side margins never applies
+because a more specific selector wins). Cards are assigned once with `getColumnIndex` (first
+column below size 5, else the smallest) using `MasonryMath.cardSize`, a config-based port of each
+card's `getCardSize()`. Badges (`ViewBadges`) sit above in a centered, wrapping row with 8px gaps:
+entity badges (state, name label, state color / primary when active) and
+`custom:mushroom-template-badge` (label, content, icon, color, picture templates); `visibility`
+and `disabled` hide a badge, a Mushroom badge with only empty templates is hidden. The sections
+view does not render badges.
+
+On screens up to 450px wide or 500px high (e.g. the 480×480 NSPanel Pro) standard dialogs,
+browser_mod popups and toasts are fullscreen / full width like `ha-dialog` and `ha-toast`.
+The `iframe` card has no WebView: video URLs (`.mp4`, `.webm`, …) play natively (muted, looped,
+autoplay, released when off-screen or when the activity stops), other URLs show a placeholder.
 
 ### Performance
 

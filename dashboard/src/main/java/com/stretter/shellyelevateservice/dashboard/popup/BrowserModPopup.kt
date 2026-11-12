@@ -33,6 +33,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.stretter.shellyelevateservice.dashboard.cards.CardLayout
@@ -83,7 +85,8 @@ internal class BrowserModPopupState(val data: JsonObject) {
  * the top, header with close button (if `dismissable`), `title` and header `icon`/`icons`, the
  * `content` (card config or HTML string, see [Html]), optional `left_button`/`right_button` and,
  * with `timeout` (ms), a 3px progress bar along the top edge that fills until the popup closes.
- * `size`: `normal` (580px), `wide`, `fullscreen`; `classic` behaves like `normal`.
+ * `size`: `normal` (580px), `wide`, `fullscreen`; `classic` behaves like `normal`. On narrow
+ * screens ([isNarrowDialogScreen]) every popup is fullscreen, like `ha-dialog`.
  */
 @Composable
 internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
@@ -111,10 +114,11 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
     }
 
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        val fullscreen = data.string("size") == "fullscreen"
-        val width: Dp = when (data.string("size")) {
-            "fullscreen" -> maxWidth
-            "wide" -> minOf(1024.dp, maxWidth - 32.dp)
+        val fullscreen = data.string("size") == "fullscreen" || isNarrowDialogScreen(maxWidth, maxHeight)
+        val shape = if (fullscreen) RectangleShape else shape
+        val width: Dp = when {
+            fullscreen -> maxWidth
+            data.string("size") == "wide" -> minOf(1024.dp, maxWidth - 32.dp)
             else -> minOf(580.dp, maxWidth - 32.dp)
         }
         val top = if (fullscreen) 0.dp else 40.dp
@@ -122,7 +126,7 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
             Modifier
                 .padding(top = top)
                 .width(width)
-                .heightIn(max = maxHeight - top * 2)
+                .then(if (fullscreen) Modifier.height(maxHeight) else Modifier.heightIn(max = maxHeight - top * 2))
                 .shadow(16.dp, shape)
                 .clip(shape)
                 .background(c.cardBackground)
