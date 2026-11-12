@@ -23,6 +23,7 @@ object CardCatalog {
         registry.register("grid") { GridCard(it) }
         registry.register("weather-forecast") { WeatherForecastCard(it) }
         registry.register("history-graph") { HistoryGraphCard(it) }
+        registry.register("iframe") { IframeCard(it) }
         registry.register("custom:refreshable-picture-card") { RefreshablePictureCard(it) }
         registry.registerCustomCards()
         registry.register("alarm-panel") { AlarmPanelCard(it) }

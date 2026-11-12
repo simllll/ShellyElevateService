@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -47,12 +48,14 @@ import com.stretter.shellyelevateservice.dashboard.cards.entity
 import com.stretter.shellyelevateservice.dashboard.html.Css
 import com.stretter.shellyelevateservice.dashboard.icons.MdiIcon
 import com.stretter.shellyelevateservice.dashboard.json.bool
+import com.stretter.shellyelevateservice.dashboard.json.double
 import com.stretter.shellyelevateservice.dashboard.json.jsonOf
 import com.stretter.shellyelevateservice.dashboard.json.objects
 import com.stretter.shellyelevateservice.dashboard.json.string
 import com.stretter.shellyelevateservice.dashboard.lovelace.GridSection
 import com.stretter.shellyelevateservice.dashboard.popup.HashPopup
 import com.stretter.shellyelevateservice.dashboard.popup.PopupScope
+import com.stretter.shellyelevateservice.dashboard.theme.CssColors
 import com.stretter.shellyelevateservice.dashboard.theme.HaTheme
 import com.stretter.shellyelevateservice.dashboard.ui.PressIndication
 import kotlinx.coroutines.delay
@@ -149,7 +152,7 @@ class BubblePopUpCard(private val config: JsonObject) : CardRenderer {
                         alpha = 0.84f + 0.16f * opening.value
                     }
                     .clip(shape)
-                    .background(BubbleColors.popUp)
+                    .background(popUpBackground())
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                     .then(if (closeOnClick) Modifier.closeOnTap { dismiss() } else Modifier)
             ) {
@@ -166,6 +169,18 @@ class BubblePopUpCard(private val config: JsonObject) : CardRenderer {
                 }
             }
         }
+    }
+
+    /**
+     * `bg_color` at `bg_opacity` % (default 88). Without backdrop blur on this Android version, a
+     * pop-up with `bg_blur` is drawn opaque (the blur would hide the view behind it anyway).
+     */
+    @Composable
+    private fun popUpBackground(): Color {
+        val custom = CssColors.computeCssColor(config.string("bg_color")) ?: return BubbleColors.popUp
+        val blurred = (config.double("bg_blur") ?: 0.0) > 0.0
+        val opacity = if (blurred) 1f else ((config.double("bg_opacity") ?: 88.0) / 100.0).toFloat().coerceIn(0f, 1f)
+        return custom.copy(alpha = custom.alpha * opacity)
     }
 
     /** Header: optional icon + name (a Bubble button without background) and the close button. */

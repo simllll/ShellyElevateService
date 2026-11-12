@@ -2,6 +2,8 @@ package com.stretter.shellyelevateservice.dashboard.image
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.RectF
 import android.util.Log
 import android.util.LruCache
 import androidx.compose.foundation.Image
@@ -20,6 +22,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import com.caverock.androidsvg.SVG
 import com.stretter.shellyelevateservice.dashboard.hass.HassClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,8 +32,9 @@ import java.io.File
 
 /**
  * Small image loader (no Coil/Glide to keep the APK lean): OkHttp with a disk cache, decoding
- * subsampled to the display size, and a memory LRU. HA-relative URLs (`/local/…`, `/api/…`) are
- * resolved against the HA base URL and get the bearer token.
+ * subsampled to the display size (SVGs rasterized at that size via AndroidSVG), and a memory LRU.
+ * HA-relative URLs (`/local/…`, `/api/…`) are resolved against the HA base URL and get the bearer
+ * token.
  */
 class ImageLoader(private val hass: HassClient, cacheDir: File) {
     private val client = hass.http.newBuilder()
@@ -54,12 +58,17 @@ class ImageLoader(private val hass: HassClient, cacheDir: File) {
             val request = hass.request(url).newBuilder()
                 .apply { if (bypassCache) cacheControl(CacheControl.FORCE_NETWORK) }
                 .build()
+            var svg = false
             val bytes = client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     Log.w(TAG, "HTTP ${response.code} for $url")
                     return@withContext null
                 }
+                svg = response.body.contentType()?.subtype?.contains("svg") == true
                 response.body.bytes()
+            }
+            if (svg || isSvg(url, bytes)) {
+                return@withContext renderSvg(bytes, targetWidth)?.asImageBitmap()?.also { memory.put(key, it) }
             }
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -77,8 +86,34 @@ class ImageLoader(private val hass: HassClient, cacheDir: File) {
 
     private fun key(url: String, width: Int) = "$width|$url"
 
+    private fun isSvg(url: String, bytes: ByteArray): Boolean {
+        if (url.substringBefore('?').endsWith(".svg", ignoreCase = true)) return true
+        val head = String(bytes, 0, minOf(bytes.size, 256), Charsets.UTF_8).trimStart()
+        return head.startsWith("<svg") || (head.startsWith("<?xml") && head.contains("<svg"))
+    }
+
+    /**
+     * Rasterizes an SVG (e.g. animated weather icons) at [targetWidth] px, keeping its aspect
+     * ratio. Animations and filters are not supported: the static first frame is drawn.
+     */
+    private fun renderSvg(bytes: ByteArray, targetWidth: Int): Bitmap? {
+        val svg = SVG.getFromInputStream(bytes.inputStream())
+        val docWidth = svg.documentWidth
+        val docHeight = svg.documentHeight
+        if (svg.documentViewBox == null && docWidth > 0 && docHeight > 0) svg.setDocumentViewBox(0f, 0f, docWidth, docHeight)
+        val box = svg.documentViewBox ?: return null
+        if (box.width() <= 0f || box.height() <= 0f) return null
+        val width = (if (targetWidth > 0) targetWidth else docWidth.toInt()).coerceIn(1, MAX_SVG_PX)
+        val height = (width * box.height() / box.width()).toInt().coerceIn(1, MAX_SVG_PX)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        svg.renderToCanvas(Canvas(bitmap), RectF(0f, 0f, width.toFloat(), height.toFloat()))
+        bitmap.prepareToDraw()
+        return bitmap
+    }
+
     private companion object {
         const val TAG = "ImageLoader"
+        const val MAX_SVG_PX = 2048
     }
 }
 
