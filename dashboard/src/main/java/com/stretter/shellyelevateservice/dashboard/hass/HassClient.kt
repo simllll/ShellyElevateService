@@ -124,10 +124,10 @@ class HassClient(
         }
     }
 
-    /** Forces a reconnect now (e.g. after the network came back). */
+    /** Skips the backoff wait and reconnects now if the connection is down (e.g. on resume). */
     fun reconnectNow() {
         scope.launch(proto) {
-            if (config == null || _connectionState.value is ConnectionState.Connected) return@launch
+            if (config == null || _connectionState.value !is ConnectionState.Disconnected) return@launch
             attempt = 0
             disconnect("manual reconnect")
             connect()
