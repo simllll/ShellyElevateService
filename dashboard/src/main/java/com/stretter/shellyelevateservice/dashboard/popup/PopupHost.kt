@@ -20,6 +20,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -71,6 +72,7 @@ class PopupHost {
     )
 
     private val entries = mutableStateListOf<Entry>()
+    private val floating = mutableStateMapOf<Any, @Composable () -> Unit>()
     private val ids = AtomicInteger()
     private var toast by mutableStateOf<Notification?>(null)
 
@@ -194,6 +196,29 @@ class PopupHost {
         val onAction: () -> Unit,
         val dismissable: Boolean,
     )
+
+    /**
+     * Draws the [Floating] elements of the current view (`position: fixed` in the web, e.g. fab-card)
+     * above the view and below popups; call once, before [Layer].
+     */
+    @Composable
+    fun FloatingLayer() {
+        floating.values.forEach { it() }
+    }
+
+    /**
+     * Shows [content] in the [FloatingLayer] (full-screen box) while this composable is composed.
+     * Call it from `CardRenderer.Effects`.
+     */
+    @Composable
+    fun Floating(content: @Composable () -> Unit) {
+        val key = remember { Any() }
+        val latest by rememberUpdatedState(content)
+        DisposableEffect(key) {
+            floating[key] = { latest() }
+            onDispose { floating.remove(key) }
+        }
+    }
 
     /** Renders the layer; call once, above the dashboard content. */
     @Composable

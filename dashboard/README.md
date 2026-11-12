@@ -69,7 +69,7 @@ DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardR
 | `icons` | MDI webfont (`assets/mdi.ttf`) + name map (`assets/mdi-map.txt`), `MdiIcon` |
 | `markdown` | Markdown subset parser and renderer (`ha-markdown` look) |
 | `format`, `image`, `ui`, `json` | formatting, image loading (bitmaps and SVG via AndroidSVG), controls (`HaSwitch`, `HaButton`, `LoopingVideo`, …), lenient JSON accessors |
-| `custom` | HACS cards: `button-card` (+ tiny JS-template evaluator, no JS engine), `auto-entities` (filter/sort engine, registry on demand via `get_entries`), `mushroom-template-card`, `template-entity-row`, `timer-bar-card` |
+| `custom` | HACS cards: `button-card` (+ tiny JS-template evaluator, no JS engine), `auto-entities` (filter/sort engine, registry on demand via `get_entries`), `mushroom-template-card`, `template-entity-row`, `timer-bar-card`, `fab-card` (floating button drawn in `PopupHost.FloatingLayer`, fixed above the view) |
 
 ### Layout fidelity
 

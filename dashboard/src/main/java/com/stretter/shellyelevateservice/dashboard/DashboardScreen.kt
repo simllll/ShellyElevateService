@@ -72,6 +72,7 @@ fun DashboardScreen(runtime: DashboardRuntime) {
                 LovelaceState.Loading -> Message("mdi:home-assistant", "Lade Dashboard …", (connection as? ConnectionState.Disconnected)?.reason)
                 is LovelaceState.Error -> Message("mdi:alert-outline", "Dashboard konnte nicht geladen werden", state.message)
             }
+            runtime.popups.FloatingLayer()
             runtime.popups.Layer(runtime.cardContext)
             runtime.buttonFeedback.Layer()
             ConnectionIndicator(connection)

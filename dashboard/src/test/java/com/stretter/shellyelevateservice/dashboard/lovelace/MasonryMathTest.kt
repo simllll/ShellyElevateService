@@ -43,6 +43,7 @@ class MasonryMathTest {
         assertEquals(1.0, MasonryMath.cardSize(card("""{"type":"entities","entities":[]}""")), 0.0)
         // 3 lines → round(1.5) = 2, plus 1 for the title
         assertEquals(3.0, MasonryMath.cardSize(card("""{"type":"markdown","title":"x","content":"a\nb\nc"}""")), 0.0)
+        assertEquals(0.0, MasonryMath.cardSize(card("""{"type":"custom:fab-card","icon":"mdi:keyboard-return"}""")), 0.0)
         assertEquals(7.0, MasonryMath.cardSize(card("""{"type":"markdown","card_size":7,"content":"a"}""")), 0.0)
         assertEquals(5.0, MasonryMath.cardSize(card("""{"type":"picture","image":"/local/x.png"}""")), 0.0)
         assertEquals(5.0, MasonryMath.cardSize(card("""{"type":"button","entity":"light.x"}""")), 0.0)

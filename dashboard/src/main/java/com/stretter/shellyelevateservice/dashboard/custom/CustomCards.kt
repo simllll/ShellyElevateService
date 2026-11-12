@@ -8,12 +8,13 @@ import com.stretter.shellyelevateservice.dashboard.custom.timerbar.TimerBarRow
 import com.stretter.shellyelevateservice.dashboard.rows.RowRegistry
 import com.stretter.shellyelevateservice.dashboard.rows.StateRow
 
-/** Custom (HACS) cards: button-card, auto-entities, mushroom-template-card, timer-bar-card. */
+/** Custom (HACS) cards: button-card, auto-entities, mushroom-template-card, timer-bar-card, fab-card. */
 fun CardRegistry.registerCustomCards() {
     register("custom:button-card") { CustomButtonCard(it) }
     register("custom:auto-entities") { AutoEntitiesCard(it) }
     register("custom:mushroom-template-card") { MushroomTemplateCard(it) }
     register("custom:timer-bar-card") { TimerBarCard(it) }
+    register("custom:fab-card") { FabCard(it) }
 }
 
 /** Custom rows used inside entities cards (also as auto-entities results). */

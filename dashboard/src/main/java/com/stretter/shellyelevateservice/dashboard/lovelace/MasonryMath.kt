@@ -78,6 +78,7 @@ object MasonryMath {
         // `title ? 2 : 0 + 2 * n` (sic: the frontend's operator precedence)
         "history-graph" -> if (config.string("title") != null) 2.0 else 2.0 * max(1, config.array("entities")?.size ?: 0)
         "alarm-panel" -> 10.0
+        "custom:fab-card" -> 0.0
         "custom:button-card" -> (config.int("card_size")?.takeIf { it != 0 } ?: 3).toDouble()
         "custom:auto-entities" -> autoEntitiesSize(config)
         "custom:mushroom-template-card" -> 1.0 + if (config.string("layout") == "vertical" || config.bool("vertical") == true) 1 else 0
