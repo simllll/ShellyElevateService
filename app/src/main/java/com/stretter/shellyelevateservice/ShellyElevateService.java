@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.os.PowerManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -571,6 +572,11 @@ public class ShellyElevateService extends Service {
                 .sendBroadcast(new Intent(INTENT_SCREEN_SAVER_STOPPED));
     }
 
+    private boolean isScreenInteractive() {
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        return pm == null || pm.isInteractive();
+    }
+
     private void turnScreenOnIfOff() {
         if (screenPower == null) return;
         // screenOn also restores the timeout if the display had not gone off yet
@@ -651,7 +657,8 @@ public class ShellyElevateService extends Service {
 
     private void onSomethingNear(boolean wakeOnProximity) {
         lastInteractionTime = System.currentTimeMillis();
-        if (wakeOnProximity && isDimmed) {
+        // Also when the display is off without isDimmed (e.g. the service restarted while asleep)
+        if (wakeOnProximity && (isDimmed || !isScreenInteractive())) {
             wakeScreen();
         }
     }

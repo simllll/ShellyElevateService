@@ -159,10 +159,10 @@ had (`WRITE_SETTINGS`, `WAKE_LOCK`):
   off display is dropped by Android, so it never reaches the dashboard.
 - Light and proximity come from the Android sensors (their raw input nodes are not readable).
   The proximity sensor reports raw infrared **reflectance**, not a distance (higher = closer:
-  ~20 at rest, 200–6000 with someone right in front of the panel; Android's `maxRange` of 9 is
-  meaningless). *Near* is ≥ 100 and *far* ≤ 50 (hysteresis), which drives `presence` and
-  `wakeOnProximity`. It only reacts at close range (a hand or a person directly in front), not
-  across a room. Its value is published at most every 5 s plus on every near/far change (the
+  ~20 at rest, 55–80 with a person standing in front of the panel, 100–6000 with a hand close to
+  it; Android's `maxRange` of 9 is meaningless). *Near* is ≥ 40 and *far* ≤ 30 (hysteresis), which
+  drives `presence` and `wakeOnProximity`. It only reacts to someone directly in front of the
+  panel, not across a room. Its value is published at most every 5 s plus on every near/far change (the
   sensor itself reports several values per second), without a unit.
 - **Relays**: relay 1 and 2 are GPIO 114 and 115 (`/sys/class/gpio/gpio11x/value`, writable by
   apps; the same nodes NSPanel Pro Tools drives). GPIO 113 is never touched.

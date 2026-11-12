@@ -31,7 +31,8 @@ public enum DeviceModel {
     // kernel but are not wired on the 86 model; they are only published with debugKeys).
     // Proximity and light are regular Android sensors (their raw input nodes are not readable).
     // The proximity sensor reports raw IR reflectance (maxRange 9 is meaningless): ~20 at rest,
-    // 200–6000 with someone in front of the panel (see proximityIsReflectance()).
+    // 55–80 with a person standing in front, 100–6000 with a hand close to it (see
+    // proximityIsReflectance()).
     // The backlight sysfs node is root-only and su is not setuid, so brightness goes through the
     // Settings API, whose 0 only reaches sysfs 10. Sleep with screenSaverMinBrightness 0 turns
     // the display really off via the screen-off-timeout trick (ScreenOffTimeoutStrategy); the
@@ -117,8 +118,8 @@ public enum DeviceModel {
     }
 
     /** Near/far thresholds (with hysteresis) for reflectance proximity sensors. */
-    public static final float REFLECTANCE_NEAR = 100f;
-    public static final float REFLECTANCE_FAR = 50f;
+    public static final float REFLECTANCE_NEAR = 40f;
+    public static final float REFLECTANCE_FAR = 30f;
 
     /**
      * The proximity sensor reports raw reflectance (higher = closer) instead of a distance below
