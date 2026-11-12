@@ -106,8 +106,10 @@ class ActionHandler(
      */
     fun browserMod(payload: JsonObject) {
         val service = payload.string("service") ?: return
-        val data = payload.obj("data") ?: EmptyJsonObject
+        var data = payload.obj("data") ?: EmptyJsonObject
         val local = service.startsWith("browser_mod.") || !service.contains('.')
+        // `browser_id: THIS` targets the browser itself.
+        if (data.string("browser_id") == "THIS") data = JsonObject(data - "browser_id")
         if (local && data["browser_id"] == null && data["user_id"] == null) {
             browserModCommand(service.removePrefix("browser_mod."), data)
             return

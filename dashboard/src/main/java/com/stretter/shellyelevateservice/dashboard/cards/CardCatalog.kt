@@ -1,5 +1,6 @@
 package com.stretter.shellyelevateservice.dashboard.cards
 
+import com.stretter.shellyelevateservice.dashboard.cards.bubble.BubbleCard
 import com.stretter.shellyelevateservice.dashboard.rows.RowRegistry
 import com.stretter.shellyelevateservice.dashboard.rows.registerCoreRows
 
@@ -18,9 +19,10 @@ object CardCatalog {
         registry.register("vertical-stack") { VerticalStackCard(it) }
         registry.register("horizontal-stack") { HorizontalStackCard(it) }
         registry.register("grid") { GridCard(it) }
+        registry.register("alarm-panel") { AlarmPanelCard(it) }
+        registry.register("custom:bubble-card") { BubbleCard.create(it) }
         // Custom cards (implemented separately):
         // registry.register("custom:button-card") { ... }
-        // registry.register("custom:bubble-card") { ... }
         // registry.register("custom:auto-entities") { ... }
         // registry.register("custom:mushroom-template-card") { ... }
         // registry.register("custom:xiaomi-vacuum-map-card") { ... }
