@@ -42,7 +42,7 @@ really has is exposed (HTTP API, MQTT discovery).
 | Shelly Wall Display (`STARGATE`) | `Stargate` | 1 | yes | yes | – | – | – | sysfs / Settings |
 | Shelly Wall Display 2 / X2 (`ATLANTIS`, `PEGASUS`) | `Atlantis`, `Pegasus` | 1 | yes | yes | yes | – | – | sysfs / Settings |
 | Shelly Wall Display XL (`BLAKE`) | `Blake` | 1 | yes | yes | yes | wide-range sensor | 4 | sysfs / Settings |
-| Sonoff NSPanel Pro 86 (`NSPANEL_PRO`) | `px30_evb` | – | – | yes | yes | from proximity | – | Settings API (min = sysfs 10); sysfs via setuid `su` if present |
+| Sonoff NSPanel Pro 86 (`NSPANEL_PRO`) | `px30_evb` | – | – | yes | yes | from proximity | – | Settings API (min = sysfs 10), sleep = display off (screen-off timeout) |
 
 Unknown models are treated as the original Shelly Wall Display. If detection picks the wrong
 profile, set `deviceModel` to one of the names in brackets (`""`/`auto` = detect; needs an API
@@ -139,19 +139,25 @@ After reboot, ShellyElevate will start automatically and launch the Home Assista
 ShellyElevate replaces the closed-source *NSPanel Pro Tools* app (`com.seaky.nspanelpro.tools`):
 one app provides MQTT sensors, sleep/wake, brightness, watchdog and (optionally) the native dashboard.
 
-The NSPanel Pro runs an Android 8.1 userdebug build (480×480 screen). Its backlight
-(`/sys/class/backlight/backlight/brightness`) and its `/dev/input` nodes are root-only, and the
-`/system/xbin/su` it ships is **not setuid**, so apps cannot use it. ShellyElevate therefore works
-without root:
+The NSPanel Pro runs an Android 8.1 userdebug build (480×480 screen). Its backlight node
+(`/sys/class/backlight/backlight/brightness`) is root-only and the shipped `/system/xbin/su` is
+not setuid, so ShellyElevate works **without root**, with the same permissions NSPanel Pro Tools
+had (`WRITE_SETTINGS`, `WAKE_LOCK`):
 
-- **Brightness / sleep** go through the Android Settings API (needs `WRITE_SETTINGS`). Settings 0
-  only reaches backlight 10, so "sleep" (`screenSaverMinBrightness`, default `0` on the NSPanel)
-  is the dimmest level, not a black screen. Switching the screen fully off needs a privileged
-  writer; the backlight writer is pluggable (`BacklightStrategy`) for that.
-- **Touch wake / idle timer** use a 1 px overlay that sees every touch-down (needs
-  `SYSTEM_ALERT_WINDOW`, see setup). Without it the screen dims after the timeout even while in use.
-- If a **setuid-root `su`** is present (e.g. Magisk), it is used automatically: backlight 0 = off,
-  touches read from `/dev/input`, `reboot` and `restart_app` via root.
+- **Brightness / dimming** go through the Android Settings API (Settings 0 = backlight 10).
+- **Sleep** with `screenSaverMinBrightness` `0` (the NSPanel default) switches the display really
+  off: the screen-off timeout is lowered to 1 s, Android turns the display off, and the original
+  timeout is restored right after (also after a crash, on the next start). While the display is
+  off a partial wake lock keeps MQTT and the sensors running, and the watchdog pauses.
+  `screenSaverMinBrightness` > 0 dims instead.
+- **Wake** (touch, proximity with `wakeOnProximity`, MQTT/HTTP) uses a short screen wake lock.
+  Touches are read from the touchscreen node (`/dev/input/event1` is world-readable); a tap on the
+  off display is dropped by Android, so it never reaches the dashboard.
+- Light and proximity come from the Android sensors (their raw input nodes are not readable).
+- If the touchscreen node is not readable, a 1 px overlay detects touches instead (needs
+  `SYSTEM_ALERT_WINDOW`). A setuid-root `su` (e.g. Magisk), if present, is used automatically for
+  the backlight, `reboot` and `restart_app`; without it those two buttons do nothing on the NSPanel
+  (the native dashboard as watchdog target still restarts).
 
 ### Setup
 
@@ -165,10 +171,11 @@ adb shell pm disable-user --user 0 com.seaky.nspanelpro.tools   # or: adb uninst
 # 2. Install and grant
 adb install ./shellyelevateservice.apk
 adb shell appops set com.stretter.shellyelevateservice WRITE_SETTINGS allow
-adb shell appops set com.stretter.shellyelevateservice SYSTEM_ALERT_WINDOW allow   # touch detection
+adb shell appops set com.stretter.shellyelevateservice SYSTEM_ALERT_WINDOW allow   # only needed if /dev/input/event1 is not readable
 adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
 
 # 3. Android must not turn the screen off or change the brightness on its own
+#    (ShellyElevate's idle timer decides; the sleep trick restores this value every time)
 adb shell settings put system screen_off_timeout 2147483647
 adb shell settings put system screen_brightness_mode 0
 
@@ -176,8 +183,9 @@ adb shell settings put system screen_brightness_mode 0
 adb shell am start-foreground-service com.stretter.shellyelevateservice/.ShellyElevateService
 ```
 
-`adb logcat -s DeviceHelper TouchOverlay RootShell` shows the active backlight writer
-(`via Settings API` or `via root shell`) and whether the touch overlay is active.
+`adb logcat -s ShellyElevateService ScreenOffTimeout InputEventReader DeviceHelper` shows sleep/wake
+(`Switching screen off via screen-off timeout`, `Screen-off timeout restored to …`) and which input
+devices are read.
 
 ### Migrating from NSPanel Pro Tools
 
@@ -193,7 +201,7 @@ Assistant (Settings → Devices → MQTT) and update automations to the new enti
 | `sleep` command | `button.…_sleep` (or `POST /device/sleep`) |
 | screen on/off state | `binary_sensor.…_sleeping` |
 | brightness | `number.…_screen_brightness` + `switch.…_auto_brightness` |
-| `reboot` command | `button.…_reboot` (needs a setuid-root `su`) |
+| `reboot` command | `button.…_reboot` (only with a setuid-root `su`) |
 | `default_app` / `launcher` | watchdog: `watchdogPackage` (`dashboard` = native dashboard) + `watchdogEnabled`; `button.…_restart_app` |
 | `adb` command | not offered: enable ADB over network once via `adb tcpip 5555` |
 
@@ -529,7 +537,7 @@ All settings can be configured via `POST /settings` with a JSON body.
 |-----|------|---------|-------------|
 | `screenSaver` | boolean | `true` | Enable screen dimming on idle |
 | `screenSaverDelay` | int | `45` | Seconds of inactivity before dimming |
-| `screenSaverMinBrightness` | int | `10` (NSPanel Pro: `0`) | Brightness level when dimmed (0-255; `0` = backlight off) |
+| `screenSaverMinBrightness` | int | `10` (NSPanel Pro: `0`) | Brightness level when dimmed (0-255; on the NSPanel Pro `0` switches the display off) |
 | `wakeOnProximity` | boolean | `false` | Wake screen when the proximity/presence sensor reports "near" |
 
 ### App Watchdog Settings

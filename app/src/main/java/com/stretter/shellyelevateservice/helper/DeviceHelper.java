@@ -89,6 +89,15 @@ public class DeviceHelper {
         return screenOn;
     }
 
+    /**
+     * The display is being switched off (not dimmed): report brightness 0 without writing it,
+     * the next setScreenBrightness after waking applies the real value.
+     */
+    public void markScreenOff() {
+        lastScreenBrightness = 0;
+        if (mMQTTServer != null) mMQTTServer.publishScreenBrightness(0);
+    }
+
     public void setScreenBrightness(int brightness) {
         lastScreenBrightness = brightness;
         setScreenBrightnessInternal(brightness);

@@ -30,6 +30,8 @@ import fi.iki.elonen.NanoHTTPD;
 import com.stretter.shellyelevateservice.helper.DeviceHelper;
 import com.stretter.shellyelevateservice.helper.DeviceSensorManager;
 import com.stretter.shellyelevateservice.helper.MediaHelper;
+import com.stretter.shellyelevateservice.helper.ScreenOffTimeoutStrategy;
+import com.stretter.shellyelevateservice.helper.ScreenPowerStrategy;
 import com.stretter.shellyelevateservice.helper.ServiceHelper;
 import com.stretter.shellyelevateservice.dashboard.popup.ButtonFeedbackContract;
 import com.stretter.shellyelevateservice.mqtt.MQTTServer;
@@ -63,6 +65,8 @@ public class ShellyElevateService extends Service {
     private MediaHelper mediaHelper;
     private InputEventReader inputEventReader;
     private TouchOverlay touchOverlay;
+    // Real display off/on for sleep at brightness 0 (NSPanel Pro), null elsewhere
+    private ScreenPowerStrategy screenPower;
     private ButtonStateTracker buttonStateTracker;
 
     // Idle/dim management
@@ -213,6 +217,11 @@ public class ShellyElevateService extends Service {
         deviceHelper = new DeviceHelper();
         ShellyElevateApplication.mDeviceHelper = deviceHelper;
 
+        if (device.screenOffViaTimeout) {
+            screenPower = new ScreenOffTimeoutStrategy(this);
+            screenPower.recover();
+        }
+
         // Sensor manager for lux and proximity
         sensorManager = new DeviceSensorManager(this);
         ShellyElevateApplication.mDeviceSensorManager = sensorManager;
@@ -237,8 +246,8 @@ public class ShellyElevateService extends Service {
         inputEventReader = new InputEventReader(this::onRawButtonEvent, this::onTouchEvent, deviceHelper.getRootShell());
         inputEventReader.start();
 
-        // Root-only /dev/input and no usable root: detect touches with an overlay instead
-        if (device.backlightRootOnly && deviceHelper.getRootShell() == null) {
+        // No readable touchscreen node: detect touches with an overlay instead
+        if (device.backlightRootOnly && !inputEventReader.hasTouchReader()) {
             touchOverlay = new TouchOverlay(this, this::onTouchEvent);
             touchOverlay.start();
         }
@@ -367,6 +376,12 @@ public class ShellyElevateService extends Service {
     private final Runnable watchdogCheck = guarded("App watchdog", () -> {
         if (!sharedPreferences.getBoolean(SP_WATCHDOG_ENABLED, false)) {
             Log.d(TAG, "Watchdog: disabled, skipping check");
+            return;
+        }
+
+        if (screenPower != null && !screenPower.isScreenOn()) {
+            // Display off: every activity is stopped, relaunching would only churn
+            Log.d(TAG, "Watchdog: screen off, skipping check");
             return;
         }
 
@@ -502,8 +517,17 @@ public class ShellyElevateService extends Service {
         isDimmed = true;
 
         int minBrightness = sharedPreferences.getInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness);
-        Log.i(TAG, "Dimming screen to brightness=" + minBrightness);
-        mainHandler.post(() -> deviceHelper.setScreenBrightness(minBrightness));
+        if (minBrightness <= 0 && screenPower != null && screenPower.isUsable()) {
+            // Lowest brightness is still lit here: switch the display off instead
+            Log.i(TAG, "Switching screen off via " + screenPower.name());
+            mainHandler.post(() -> {
+                deviceHelper.markScreenOff();
+                screenPower.screenOff();
+            });
+        } else {
+            Log.i(TAG, "Dimming screen to brightness=" + minBrightness);
+            mainHandler.post(() -> deviceHelper.setScreenBrightness(minBrightness));
+        }
 
         // Publish state via MQTT (also remembered for re-publishing after a reconnect)
         if (mqttServer != null) {
@@ -516,9 +540,14 @@ public class ShellyElevateService extends Service {
     }
 
     private void wakeScreen() {
-        if (!isDimmed) return;
+        if (!isDimmed) {
+            // Display turned off by Android itself (its own timeout): wake requests still apply
+            turnScreenOnIfOff();
+            return;
+        }
         isDimmed = false;
         lastInteractionTime = System.currentTimeMillis();
+        turnScreenOnIfOff();
 
         int brightness = sharedPreferences.getInt(SP_BRIGHTNESS, 255);
         boolean autoBrightness = sharedPreferences.getBoolean(SP_AUTOMATIC_BRIGHTNESS, true);
@@ -540,6 +569,12 @@ public class ShellyElevateService extends Service {
         // Broadcast for any listeners
         LocalBroadcastManager.getInstance(this)
                 .sendBroadcast(new Intent(INTENT_SCREEN_SAVER_STOPPED));
+    }
+
+    private void turnScreenOnIfOff() {
+        if (screenPower == null) return;
+        // screenOn also restores the timeout if the display had not gone off yet
+        mainHandler.post(() -> screenPower.screenOn());
     }
 
     public void keepAlive(boolean keepAlive) {
@@ -742,6 +777,8 @@ public class ShellyElevateService extends Service {
         lastInteractionTime = System.currentTimeMillis();
         if (isDimmed) {
             wakeScreen();
+        } else if (screenPower != null && !screenPower.isScreenOn()) {
+            turnScreenOnIfOff();
         }
     }
 
@@ -776,6 +813,9 @@ public class ShellyElevateService extends Service {
         }
         if (touchOverlay != null) {
             touchOverlay.stop();
+        }
+        if (screenPower != null) {
+            screenPower.release();
         }
 
         // Cleanup button state tracker

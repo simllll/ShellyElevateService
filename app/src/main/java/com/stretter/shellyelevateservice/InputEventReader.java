@@ -60,6 +60,8 @@ public class InputEventReader {
     private final ExecutorService executor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final List<InputStream> openStreams = new ArrayList<>();
+    // A multi-touch device is being read (directly or via root)
+    private volatile boolean touchReader = false;
 
     public interface ButtonEventCallback {
         void onButtonEvent(int keyCode, boolean pressed);
@@ -84,8 +86,17 @@ public class InputEventReader {
         this.executor = Executors.newCachedThreadPool();
     }
 
+    /** True once a multi-touch input device is being read (touches arrive via onTouch). */
+    public boolean hasTouchReader() {
+        return touchReader;
+    }
+
+    private static String capabilitiesPath(String eventName) {
+        return "/sys/class/input/" + eventName + "/device/capabilities/";
+    }
+
     private static boolean hasTouchOrKeys(String eventName) {
-        String base = "/sys/class/input/" + eventName + "/device/capabilities/";
+        String base = capabilitiesPath(eventName);
         String keys = readFirstLine(base + "key");
         String abs = readFirstLine(base + "abs");
         // Capabilities unreadable: better read the device than miss a touchscreen
@@ -108,6 +119,11 @@ public class InputEventReader {
      */
     static boolean hasTouchOrKeys(String keyCaps, String absCaps) {
         if (keyCaps != null && !keyCaps.trim().replace("0", "").replace(" ", "").isEmpty()) return true;
+        return hasMultiTouch(absCaps);
+    }
+
+    /** True if the abs capability bitmap contains ABS_MT_TRACKING_ID. */
+    static boolean hasMultiTouch(String absCaps) {
         if (absCaps == null || absCaps.trim().isEmpty()) return false;
         String[] words = absCaps.trim().split("\\s+");
         boolean wide = false;
@@ -157,6 +173,7 @@ public class InputEventReader {
                     Log.i(TAG, "Skipping " + eventFile.getAbsolutePath() + " (no keys, no touch)");
                 } else if (rootShell != null) {
                     Log.i(TAG, "Starting root reader for: " + eventFile.getAbsolutePath());
+                    touchReader |= hasMultiTouch(readFirstLine(capabilitiesPath(eventFile.getName()) + "abs"));
                     executor.submit(() -> readEvents(eventFile, true));
                 } else {
                     Log.w(TAG, "Cannot read: " + eventFile.getAbsolutePath() + " (need root?)");
@@ -165,6 +182,7 @@ public class InputEventReader {
             }
 
             Log.i(TAG, "Starting reader for: " + eventFile.getAbsolutePath());
+            touchReader |= hasMultiTouch(readFirstLine(capabilitiesPath(eventFile.getName()) + "abs"));
             executor.submit(() -> readEvents(eventFile, false));
         }
     }

@@ -39,4 +39,12 @@ public class InputEventReaderTest {
         assertFalse(InputEventReader.hasTouchOrKeys("0", ""));
         assertFalse(InputEventReader.hasTouchOrKeys(null, null));
     }
+
+    @Test
+    public void multiTouchCapability() {
+        assertTrue(InputEventReader.hasMultiTouch("260000000000000"));
+        assertTrue(InputEventReader.hasMultiTouch("2600000 0"));
+        assertFalse(InputEventReader.hasMultiTouch("2000000"));
+        assertFalse(InputEventReader.hasMultiTouch(null));
+    }
 }

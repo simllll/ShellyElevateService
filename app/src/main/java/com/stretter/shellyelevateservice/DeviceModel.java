@@ -29,14 +29,16 @@ public enum DeviceModel {
     // Sonoff NSPanel Pro (86 type, EU). Generic Rockchip PX30 board name, rooted userdebug build.
     // No relays, no temperature/humidity sensor, no hardware buttons (adc-keys exist in the
     // kernel but are not wired on the 86 model; they are only published with debugKeys).
-    // Proximity and light are regular Android sensors. The backlight sysfs node is root-only and
-    // su is not setuid, so brightness goes through the Settings API, whose 0 only reaches sysfs
-    // 10 (dimmest, not off). screenSaverMinBrightness 0 = as dark as the active strategy allows.
+    // Proximity and light are regular Android sensors (their raw input nodes are not readable).
+    // The backlight sysfs node is root-only and su is not setuid, so brightness goes through the
+    // Settings API, whose 0 only reaches sysfs 10. Sleep with screenSaverMinBrightness 0 turns
+    // the display really off via the screen-off-timeout trick (ScreenOffTimeoutStrategy); the
+    // touchscreen node (event1) is world-readable, so touches still wake it.
     // TODO: the kernel exports GPIO 113/114/115 (purpose unknown, maybe relay board or LEDs).
     //  Never drive them until their function is known.
     NSPANEL_PRO("px30_evb", "NSPanel Pro", "NSPanel Pro 86", "Sonoff", "Sonoff NSPanel Pro",
             true, true, false, 0, 0,
-            "/sys/class/backlight/backlight/brightness", true, true, 0, 480, 480),
+            "/sys/class/backlight/backlight/brightness", true, true, true, 0, 480, 480),
     ;
 
     private final String model;
@@ -61,6 +63,8 @@ public enum DeviceModel {
      * detected with an overlay (TouchOverlay).
      */
     public final boolean backlightRootOnly;
+    /** Sleep at brightness 0 turns the display off via ScreenOffTimeoutStrategy. */
+    public final boolean screenOffViaTimeout;
     /** Publish a presence (occupancy) binary sensor derived from the proximity sensor. */
     public final boolean presenceFromProximity;
     /** Default for screenSaverMinBrightness (brightness while dimmed / asleep). */
@@ -72,22 +76,22 @@ public enum DeviceModel {
     DeviceModel(String model, String friendlyName, String modelName, boolean hasProximitySensor, double temperatureOffset, double humidityOffset, int buttons, int inputs) {
         this(model, friendlyName, modelName, "Shelly", "Shelly Wall Display",
                 hasProximitySensor, true, true, buttons, inputs,
-                null, false, false, 10, 0, 0, temperatureOffset, humidityOffset);
+                null, false, false, false, 10, 0, 0, temperatureOffset, humidityOffset);
     }
 
     // Devices without a temperature/humidity sensor
     DeviceModel(String model, String friendlyName, String modelName, String manufacturer, String deviceName,
                 boolean hasProximitySensor, boolean hasLightSensor, boolean hasTempHumSensor, int buttons, int inputs,
-                String backlightPath, boolean backlightRootOnly, boolean presenceFromProximity,
+                String backlightPath, boolean backlightRootOnly, boolean screenOffViaTimeout, boolean presenceFromProximity,
                 int defaultScreenSaverMinBrightness, int screenWidthDp, int screenHeightDp) {
         this(model, friendlyName, modelName, manufacturer, deviceName, hasProximitySensor, hasLightSensor,
-                hasTempHumSensor, buttons, inputs, backlightPath, backlightRootOnly, presenceFromProximity,
+                hasTempHumSensor, buttons, inputs, backlightPath, backlightRootOnly, screenOffViaTimeout, presenceFromProximity,
                 defaultScreenSaverMinBrightness, screenWidthDp, screenHeightDp, 0d, 0d);
     }
 
     DeviceModel(String model, String friendlyName, String modelName, String manufacturer, String deviceName,
                 boolean hasProximitySensor, boolean hasLightSensor, boolean hasTempHumSensor, int buttons, int inputs,
-                String backlightPath, boolean backlightRootOnly, boolean presenceFromProximity,
+                String backlightPath, boolean backlightRootOnly, boolean screenOffViaTimeout, boolean presenceFromProximity,
                 int defaultScreenSaverMinBrightness, int screenWidthDp, int screenHeightDp,
                 double temperatureOffset, double humidityOffset) {
         this.model = model;
@@ -104,6 +108,7 @@ public enum DeviceModel {
         this.inputs = inputs;
         this.backlightPath = backlightPath;
         this.backlightRootOnly = backlightRootOnly;
+        this.screenOffViaTimeout = screenOffViaTimeout;
         this.presenceFromProximity = presenceFromProximity;
         this.defaultScreenSaverMinBrightness = defaultScreenSaverMinBrightness;
         this.screenWidthDp = screenWidthDp;
