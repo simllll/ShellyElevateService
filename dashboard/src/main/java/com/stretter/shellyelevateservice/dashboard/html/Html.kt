@@ -63,7 +63,8 @@ internal data class HtmlStyle(
     val align: TextAlign,
     val weight: Int = 400,
     val italic: Boolean = false,
-    val lineHeight: Float = 1.5f,
+    /** CSS `line-height: normal` of Roboto. */
+    val lineHeight: Float = 1.2f,
     val underline: Boolean = false,
 )
 
