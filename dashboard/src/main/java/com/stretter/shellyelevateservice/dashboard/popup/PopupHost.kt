@@ -73,6 +73,10 @@ class PopupHost {
 
     val isShowingPopup: Boolean get() = entries.isNotEmpty()
 
+    /** Incremented for every browser_mod popup (observable; [ButtonFeedback] hides on change). */
+    var browserModPopupGeneration by mutableStateOf(0)
+        private set
+
     fun setHash(hash: String?) {
         _hash.value = hash?.takeIf { it.length > 1 }
     }
@@ -135,6 +139,7 @@ class PopupHost {
      */
     fun showBrowserModPopup(data: JsonObject) {
         val state = BrowserModPopupState(data)
+        browserModPopupGeneration++
         show(
             id = BROWSER_MOD_PREFIX + state.tag,
             dismissible = state.dismissable,

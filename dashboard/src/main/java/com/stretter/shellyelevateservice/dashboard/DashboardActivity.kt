@@ -56,11 +56,13 @@ class DashboardActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         DashboardRuntime.get(this).browserMod.setVisible(true)
+        DashboardRuntime.get(this).buttonFeedback.register(this)
     }
 
     override fun onStop() {
         super.onStop()
         DashboardRuntime.get(this).browserMod.setVisible(false)
+        DashboardRuntime.get(this).buttonFeedback.unregister(this)
     }
 
     override fun onResume() {

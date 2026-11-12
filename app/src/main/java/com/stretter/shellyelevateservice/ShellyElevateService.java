@@ -31,6 +31,7 @@ import com.stretter.shellyelevateservice.helper.DeviceHelper;
 import com.stretter.shellyelevateservice.helper.DeviceSensorManager;
 import com.stretter.shellyelevateservice.helper.MediaHelper;
 import com.stretter.shellyelevateservice.helper.ServiceHelper;
+import com.stretter.shellyelevateservice.dashboard.popup.ButtonFeedbackContract;
 import com.stretter.shellyelevateservice.mqtt.MQTTServer;
 
 import static com.stretter.shellyelevateservice.Constants.*;
@@ -696,12 +697,30 @@ public class ShellyElevateService extends Service {
 
     /**
      * Called by ButtonStateTracker when a button action is detected.
-     * Publishes the event to MQTT.
+     * Publishes the event to MQTT and tells a running native dashboard to show instant feedback.
      */
     private void onButtonAction(int buttonNumber, ButtonStateTracker.EventType eventType) {
         Log.i(TAG, "Button " + buttonNumber + " action: " + eventType.getValue());
         if (mqttServer != null && mqttServer.shouldSend()) {
             mqttServer.publishButtonEvent(buttonNumber, eventType.getValue());
+        }
+        sendDashboardButtonFeedback(buttonNumber, eventType);
+    }
+
+    /**
+     * Cross-process broadcast to the :dashboard process (LocalBroadcastManager stays in-process).
+     * Restricted to our package; the dashboard registers a not-exported receiver only while it is
+     * started, so without a running dashboard this is a no-op.
+     */
+    private void sendDashboardButtonFeedback(int buttonNumber, ButtonStateTracker.EventType eventType) {
+        try {
+            Intent intent = new Intent(ButtonFeedbackContract.ACTION)
+                    .setPackage(getPackageName())
+                    .putExtra(ButtonFeedbackContract.EXTRA_BUTTON, buttonNumber)
+                    .putExtra(ButtonFeedbackContract.EXTRA_EVENT, eventType.getValue());
+            sendBroadcast(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "Could not send button feedback to dashboard: " + e.getMessage());
         }
     }
 

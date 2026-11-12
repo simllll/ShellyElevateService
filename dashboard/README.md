@@ -98,6 +98,17 @@ watchdog heartbeat) is run as a service call, anything else is logged and ignore
 HTML popup content is drawn natively by `html/Html.kt` (block/inline elements, `ha-icon`,
 inline styles for color, font size/weight, opacity, alignment, margins and paddings).
 
+### Hardware buttons
+
+HA automations stay the source of truth for the four hardware buttons (MQTT `button_event`,
+browser_mod popups). For instant feedback the service also sends a package-restricted broadcast
+(`ButtonFeedbackContract.ACTION`, extras `button` 1–4 and `event` `single`/`double`/`long`) to a
+not-exported receiver the dashboard registers only while the activity is started (no effect, and
+no process start, when the dashboard is not running). The dashboard shows a small pill at the top
+center ("Taste 2", "Taste 2 · 2×", "Taste 2 · lang") for 1.5 s, or until the next browser_mod
+popup arrives. A single press is reported after the 300 ms double-click window, a long press after
+500 ms.
+
 ## Adding a card type
 
 1. Implement `CardRenderer` (see the KDoc in `cards/CardRenderer.kt`):

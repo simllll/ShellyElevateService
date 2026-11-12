@@ -19,6 +19,7 @@ import com.stretter.shellyelevateservice.dashboard.json.asObject
 import com.stretter.shellyelevateservice.dashboard.json.jsonOf
 import com.stretter.shellyelevateservice.dashboard.json.objects
 import com.stretter.shellyelevateservice.dashboard.json.string
+import com.stretter.shellyelevateservice.dashboard.popup.ButtonFeedback
 import com.stretter.shellyelevateservice.dashboard.popup.PopupHost
 import com.stretter.shellyelevateservice.dashboard.rows.RowRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +59,7 @@ class DashboardRuntime private constructor(context: Context) {
     val icons = IconResolver()
     val popups = PopupHost()
     val navigator = Navigator(popups)
+    val buttonFeedback = ButtonFeedback(popups)
     val actions = ActionHandler(hass, popups, navigator, scope)
     val browserMod = BrowserMod(hass, actions, scope, ::browserPath)
     val cards = CardRegistry().also(CardCatalog::registerCards)

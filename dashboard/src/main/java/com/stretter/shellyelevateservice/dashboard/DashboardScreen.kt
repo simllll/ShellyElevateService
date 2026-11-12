@@ -59,6 +59,7 @@ fun DashboardScreen(runtime: DashboardRuntime) {
                 is LovelaceState.Error -> Message("mdi:alert-outline", "Dashboard konnte nicht geladen werden", state.message)
             }
             runtime.popups.Layer(runtime.cardContext)
+            runtime.buttonFeedback.Layer()
             ConnectionIndicator(connection)
         }
     }
