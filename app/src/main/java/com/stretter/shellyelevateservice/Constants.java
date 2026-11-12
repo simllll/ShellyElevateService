@@ -36,6 +36,9 @@ public class Constants {
     public static final String SP_MQTT_PASSWORD = "mqttPassword";
     public static final String SP_MQTT_CLIENTID = "mqttDeviceId";
 
+    //Device profile override (enum name of DeviceModel, empty/"auto" = detect by Build.MODEL)
+    public static final String SP_DEVICE_MODEL = "deviceModel";
+
     //Debug SP Keys
     public static final String SP_DEBUG_KEYS = "debugKeys";
 

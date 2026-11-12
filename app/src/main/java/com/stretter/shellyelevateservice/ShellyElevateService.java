@@ -54,6 +54,7 @@ public class ShellyElevateService extends Service {
     private static final int NOTIFICATION_ID = 1;
 
     // Core components
+    private final DeviceModel device = DeviceModel.getReportedDevice();
     private SharedPreferences sharedPreferences;
     private DeviceHelper deviceHelper;
     private DeviceSensorManager sensorManager;
@@ -181,7 +182,7 @@ public class ShellyElevateService extends Service {
         // Screen saver / dimming
         if (!sharedPreferences.contains(SP_SCREEN_SAVER_ENABLED)) editor.putBoolean(SP_SCREEN_SAVER_ENABLED, true);
         if (!sharedPreferences.contains(SP_SCREEN_SAVER_DELAY)) editor.putInt(SP_SCREEN_SAVER_DELAY, 45);
-        if (!sharedPreferences.contains(SP_SCREEN_SAVER_MIN_BRIGHTNESS)) editor.putInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, 10);
+        if (!sharedPreferences.contains(SP_SCREEN_SAVER_MIN_BRIGHTNESS)) editor.putInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness);
         if (!sharedPreferences.contains(SP_WAKE_ON_PROXIMITY)) editor.putBoolean(SP_WAKE_ON_PROXIMITY, false);
 
         // Watchdog
@@ -230,8 +231,9 @@ public class ShellyElevateService extends Service {
         // Button state tracker for single/double/long press detection
         buttonStateTracker = new ButtonStateTracker(this::onButtonAction);
 
-        // Input event reader for hardware buttons
-        inputEventReader = new InputEventReader(this::onRawButtonEvent);
+        // Input event reader for hardware buttons and touches (root-only nodes through the
+        // root shell on devices that have one)
+        inputEventReader = new InputEventReader(this::onRawButtonEvent, this::onTouchEvent, deviceHelper.getRootShell());
         inputEventReader.start();
     }
 
@@ -449,7 +451,7 @@ public class ShellyElevateService extends Service {
         } else {
             // Force stop the app using am force-stop command
             try {
-                Runtime.getRuntime().exec("am force-stop " + packageName);
+                deviceHelper.forceStopApp(packageName);
                 Log.i(TAG, "Force stopped app: " + packageName);
             } catch (IOException e) {
                 Log.w(TAG, "Could not force stop app: " + e.getMessage());
@@ -492,7 +494,7 @@ public class ShellyElevateService extends Service {
         }
         isDimmed = true;
 
-        int minBrightness = sharedPreferences.getInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, 10);
+        int minBrightness = sharedPreferences.getInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness);
         Log.i(TAG, "Dimming screen to brightness=" + minBrightness);
         mainHandler.post(() -> deviceHelper.setScreenBrightness(minBrightness));
 
@@ -567,7 +569,12 @@ public class ShellyElevateService extends Service {
 
         // Only "near" counts as interaction; a "far" event (someone walking away) must not
         // reset the idle timer and postpone dimming
-        if (proximity < maxRange - 0.5f) {
+        boolean near = proximity < maxRange - 0.5f;
+        if (device.presenceFromProximity && mqttServer != null && !Boolean.valueOf(near).equals(mqttServer.getPresence())) {
+            // No separate presence sensor: proximity near/far doubles as occupancy
+            mqttServer.publishPresence(near);
+        }
+        if (near) {
             onSomethingNear(wakeOnProximity);
         }
     }

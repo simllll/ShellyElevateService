@@ -35,12 +35,29 @@ public class DeviceHelper {
             "/sys/devices/platform/backlight/backlight/backlight/brightness"
             };
     private String screenBrightnessFile;
+    private final DeviceModel device = DeviceModel.getReportedDevice();
+    // Root-only backlight (NSPanel Pro): written through the persistent su shell
+    private final RootShell rootShell;
     private boolean screenOn = true;
     private volatile int lastScreenBrightness = -1;
 
     private static final String TAG = "DeviceHelper";
 
     public DeviceHelper() {
+        if (device.needsRootForBacklight) {
+            rootShell = RootShell.get();
+            rootShell.prepareAsync();
+        } else {
+            rootShell = null;
+        }
+
+        if (device.backlightPath != null) {
+            screenBrightnessFile = device.backlightPath;
+            Log.i(TAG, "Using brightness file of " + device.name() + ": " + screenBrightnessFile
+                    + (device.needsRootForBacklight ? " (via root shell)" : ""));
+            return;
+        }
+
         for (String brightnessFile : screenBrightnessFiles) {
             File f = new File(brightnessFile);
             if (f.exists()) {
@@ -82,6 +99,22 @@ public class DeviceHelper {
 
         Log.d(TAG, "Set brightness to: " + brightness);
 
+        if (rootShell != null) {
+            // Only the sysfs node: Android's own brightness (Settings) would ramp the backlight
+            // through the lights HAL and could overwrite a 0 ("sleep"). Without root the
+            // Settings API is the only way left (Android clamps its minimum, so never fully dark).
+            final int value = brightness;
+            rootShell.setBacklight(screenBrightnessFile, value, () -> writeBrightnessSetting(value));
+            return;
+        }
+
+        writeBrightnessSetting(brightness);
+
+        // Also try sysfs as backup
+        writeFileContent(screenBrightnessFile, String.valueOf(brightness));
+    }
+
+    private static void writeBrightnessSetting(int brightness) {
         // Try Android Settings API first
         if (Settings.System.canWrite(mApplicationContext)) {
             try {
@@ -98,9 +131,52 @@ public class DeviceHelper {
         } else {
             Log.w(TAG, "App cannot write system settings - brightness control may not work");
         }
+    }
 
-        // Also try sysfs as backup
-        writeFileContent(screenBrightnessFile, String.valueOf(brightness));
+    /**
+     * Reboots the device. Devices with a root shell reboot through it (an app uid cannot run
+     * "reboot" itself), falling back to the plain command.
+     */
+    public void reboot() throws IOException {
+        if (rootShell != null && !Boolean.FALSE.equals(rootShell.isAvailable())) {
+            rootShell.reboot(DeviceHelper::execReboot);
+            return;
+        }
+        Runtime.getRuntime().exec("reboot");
+    }
+
+    private static void execReboot() {
+        try {
+            Runtime.getRuntime().exec("reboot");
+        } catch (IOException e) {
+            Log.e(TAG, "Error rebooting:", e);
+        }
+    }
+
+    /** Force-stops an app (root shell where available, "am force-stop" as app uid otherwise). */
+    public void forceStopApp(String packageName) throws IOException {
+        if (rootShell != null && !Boolean.FALSE.equals(rootShell.isAvailable())) {
+            try {
+                rootShell.forceStop(packageName, () -> execForceStop(packageName));
+                return;
+            } catch (IllegalArgumentException e) {
+                throw new IOException(e.getMessage());
+            }
+        }
+        Runtime.getRuntime().exec("am force-stop " + packageName);
+    }
+
+    private static void execForceStop(String packageName) {
+        try {
+            Runtime.getRuntime().exec("am force-stop " + packageName);
+        } catch (IOException e) {
+            Log.w(TAG, "Could not force stop app: " + e.getMessage());
+        }
+    }
+
+    /** Root shell used for root-only hardware nodes, null on devices that do not need one. */
+    public RootShell getRootShell() {
+        return rootShell;
     }
 
     /** Last brightness applied via setScreenBrightness, -1 if none yet. */
@@ -121,7 +197,7 @@ public class DeviceHelper {
         boolean relayState = false;
 
         // Safety check
-        if (num < 0 || num >= possibleRelayFiles.length) return false;
+        if (num < 0 || num >= possibleRelayFiles.length || device.inputs == 0) return false;
 
         for (String relayFile : possibleRelayFiles[num]) {
             // readFileContent returns null when the node does not exist on this model
@@ -135,7 +211,7 @@ public class DeviceHelper {
 
     public void setRelay(int num, boolean state) {
         // Safety check
-        if (num < 0 || num >= possibleRelayFiles.length) return;
+        if (num < 0 || num >= possibleRelayFiles.length || device.inputs == 0) return;
 
         for (String relayFile : possibleRelayFiles[num]) {
             writeFileContent(relayFile, state ? "1" : "0");
@@ -147,6 +223,7 @@ public class DeviceHelper {
     }
 
     public double getTemperature() {
+        if (!device.hasTempHumSensor) return -999;
         try
         {
             var content = readFileContent(tempAndHumFile);
@@ -155,7 +232,7 @@ public class DeviceHelper {
             String[] tempSplit = content.split(":");
             double temp = (Double.parseDouble(tempSplit[1]) * 175.0 / 65535.0) - 45.0;
 
-            temp += DeviceModel.getReportedDevice().temperatureOffset;
+            temp += device.temperatureOffset;
             return Math.round(temp * 10.0) / 10.0;
         } catch (Exception e) {
             Log.d("TAG", "Error while reading temperature: " + e);
@@ -164,6 +241,7 @@ public class DeviceHelper {
     }
 
     public double getHumidity() {
+        if (!device.hasTempHumSensor) return -999;
         try {
             var content = readFileContent(tempAndHumFile);
             if (content == null || content.isEmpty()) return -999;
@@ -171,7 +249,7 @@ public class DeviceHelper {
             String[] humiditySplit = content.split(":");
             double humidity = Double.parseDouble(humiditySplit[0]) * 100.0 / 65535.0;
 
-            humidity += DeviceModel.getReportedDevice().humidityOffset;
+            humidity += device.humidityOffset;
 
             return Math.round(humidity);
         } catch (Exception e) {

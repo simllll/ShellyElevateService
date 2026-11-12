@@ -72,7 +72,7 @@ public class ShellyElevateMQTTCallback {
                 deltaTime /= 1000;
                 if (deltaTime > 20) {
                     try {
-                        Runtime.getRuntime().exec("reboot");
+                        mDeviceHelper.reboot();
                     } catch (IOException e) {
                         Log.e("MQTT", "Error rebooting:", e);
                     }
