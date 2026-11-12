@@ -46,8 +46,10 @@ public class DeviceModelTest {
     @Test
     public void nsPanelCapabilities() {
         DeviceModel m = DeviceModel.NSPANEL_PRO;
-        assertEquals(0, m.inputs);
+        assertEquals(2, m.inputs);
         assertEquals(0, m.buttons);
+        assertTrue(m.proximityIsReflectance());
+        assertFalse(DeviceModel.BLAKE.proximityIsReflectance());
         assertFalse(m.hasTempHumSensor);
         assertTrue(m.hasProximitySensor);
         assertTrue(m.hasLightSensor);

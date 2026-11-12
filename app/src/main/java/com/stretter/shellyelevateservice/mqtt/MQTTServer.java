@@ -661,8 +661,11 @@ public class MQTTServer {
             proximitySensorPayload.put("p", "sensor");
             proximitySensorPayload.put("name", "Proximity");
             proximitySensorPayload.put("state_topic", parseTopic(MQTT_TOPIC_PROXIMITY_SENSOR));
-            proximitySensorPayload.put("device_class", "distance");
-            proximitySensorPayload.put("unit_of_measurement", "cm");
+            if (!DeviceModel.getReportedDevice().proximityIsReflectance()) {
+                // Reflectance (NSPanel Pro) has no unit
+                proximitySensorPayload.put("device_class", "distance");
+                proximitySensorPayload.put("unit_of_measurement", "cm");
+            }
             proximitySensorPayload.put("state_class", "measurement");
             proximitySensorPayload.put("unique_id", clientId + "_proximity");
             components.put(clientId + "_proximity", proximitySensorPayload);

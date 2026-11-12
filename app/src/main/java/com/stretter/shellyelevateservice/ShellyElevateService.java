@@ -600,18 +600,33 @@ public class ShellyElevateService extends Service {
 
     // === Event Handlers ===
 
+    private boolean lastProximityNear = false;
+    private long lastProximityPublish = 0;
+
     private void onProximityChanged(float proximity) {
         boolean wakeOnProximity = sharedPreferences.getBoolean(SP_WAKE_ON_PROXIMITY, false);
         float maxRange = sensorManager.getMaxProximitySensorValue();
 
-        // Publish to MQTT
-        if (mqttServer != null && mqttServer.shouldSend()) {
-            mqttServer.publishProximity(proximity);
-        }
-
         // Only "near" counts as interaction; a "far" event (someone walking away) must not
         // reset the idle timer and postpone dimming
-        boolean near = proximity < maxRange - 0.5f;
+        boolean near;
+        if (device.proximityIsReflectance()) {
+            near = proximity >= DeviceModel.REFLECTANCE_NEAR
+                    || (lastProximityNear && proximity > DeviceModel.REFLECTANCE_FAR);
+        } else {
+            near = proximity < maxRange - 0.5f;
+        }
+        boolean nearChanged = near != lastProximityNear;
+        lastProximityNear = near;
+
+        // Publish to MQTT. A reflectance sensor reports several values per second, so only
+        // near/far changes go out immediately and other values at most every 5 s.
+        long now = System.currentTimeMillis();
+        boolean publish = !device.proximityIsReflectance() || nearChanged || now - lastProximityPublish >= 5000;
+        if (publish && mqttServer != null && mqttServer.shouldSend()) {
+            lastProximityPublish = now;
+            mqttServer.publishProximity(proximity);
+        }
         if (device.presenceFromProximity && mqttServer != null && !Boolean.valueOf(near).equals(mqttServer.getPresence())) {
             // No separate presence sensor: proximity near/far doubles as occupancy
             mqttServer.publishPresence(near);

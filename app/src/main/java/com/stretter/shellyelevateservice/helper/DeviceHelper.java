@@ -28,6 +28,18 @@ public class DeviceHelper {
             }
     };
 
+    // NSPanel Pro: relay 1/2 on GPIO 114/115 (world-writable sysfs, the same nodes the
+    // NSPanel Pro Tools app drives for switch_1/switch_2). Only used on that model, the
+    // GPIO numbers mean something else on other boards.
+    private static final String[][] nspanelRelayFiles = {
+            {"/sys/class/gpio/gpio114/value"},
+            {"/sys/class/gpio/gpio115/value"}
+    };
+
+    private String[][] relayFiles() {
+        return device == DeviceModel.NSPANEL_PRO ? nspanelRelayFiles : possibleRelayFiles;
+    }
+
     private static final String tempAndHumFile = "/sys/devices/platform/sht3x-user/sht3x_access";
     private static final String[] screenBrightnessFiles = {
             "/sys/devices/platform/leds-mt65xx/leds/lcd-backlight/brightness",
@@ -163,6 +175,13 @@ public class DeviceHelper {
             rootShell.reboot(DeviceHelper::execReboot);
             return;
         }
+        if (device == DeviceModel.NSPANEL_PRO) {
+            // No usable su, but SELinux is permissive on its userdebug build: init accepts the
+            // reboot request property from the app uid (the "reboot" binary itself needs root).
+            Log.i(TAG, "Rebooting via sys.powerctl");
+            Runtime.getRuntime().exec(new String[]{"setprop", "sys.powerctl", "reboot"});
+            return;
+        }
         Runtime.getRuntime().exec("reboot");
     }
 
@@ -227,9 +246,9 @@ public class DeviceHelper {
         boolean relayState = false;
 
         // Safety check
-        if (num < 0 || num >= possibleRelayFiles.length || device.inputs == 0) return false;
+        if (num < 0 || num >= relayFiles().length || device.inputs == 0) return false;
 
-        for (String relayFile : possibleRelayFiles[num]) {
+        for (String relayFile : relayFiles()[num]) {
             // readFileContent returns null when the node does not exist on this model
             String content = readFileContent(relayFile);
             relayState |= content != null && content.contains("1");
@@ -241,9 +260,9 @@ public class DeviceHelper {
 
     public void setRelay(int num, boolean state) {
         // Safety check
-        if (num < 0 || num >= possibleRelayFiles.length || device.inputs == 0) return;
+        if (num < 0 || num >= relayFiles().length || device.inputs == 0) return;
 
-        for (String relayFile : possibleRelayFiles[num]) {
+        for (String relayFile : relayFiles()[num]) {
             writeFileContent(relayFile, state ? "1" : "0");
         }
 

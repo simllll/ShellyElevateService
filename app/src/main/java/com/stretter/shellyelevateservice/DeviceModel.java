@@ -27,17 +27,18 @@ public enum DeviceModel {
     CALLY("Jenna","Shelly Wall Display XLi", "SAWD-6A1XX10EU0", true, 0d, 0.0d, 4, 1), // TODO: not yet avaiable
 
     // Sonoff NSPanel Pro (86 type, EU). Generic Rockchip PX30 board name, rooted userdebug build.
-    // No relays, no temperature/humidity sensor, no hardware buttons (adc-keys exist in the
+    // Two relays on GPIO 114/115 (DeviceHelper), no temperature/humidity sensor, no hardware buttons (adc-keys exist in the
     // kernel but are not wired on the 86 model; they are only published with debugKeys).
     // Proximity and light are regular Android sensors (their raw input nodes are not readable).
+    // The proximity sensor reports raw IR reflectance (maxRange 9 is meaningless): ~20 at rest,
+    // 200–6000 with someone in front of the panel (see proximityIsReflectance()).
     // The backlight sysfs node is root-only and su is not setuid, so brightness goes through the
     // Settings API, whose 0 only reaches sysfs 10. Sleep with screenSaverMinBrightness 0 turns
     // the display really off via the screen-off-timeout trick (ScreenOffTimeoutStrategy); the
     // touchscreen node (event1) is world-readable, so touches still wake it.
-    // TODO: the kernel exports GPIO 113/114/115 (purpose unknown, maybe relay board or LEDs).
-    //  Never drive them until their function is known.
+    // GPIO 113 (purpose unknown, high at boot) is never touched.
     NSPANEL_PRO("px30_evb", "NSPanel Pro", "NSPanel Pro 86", "Sonoff", "Sonoff NSPanel Pro",
-            true, true, false, 0, 0,
+            true, true, false, 0, 2,
             "/sys/class/backlight/backlight/brightness", true, true, true, 0, 480, 480),
     ;
 
@@ -113,6 +114,18 @@ public enum DeviceModel {
         this.defaultScreenSaverMinBrightness = defaultScreenSaverMinBrightness;
         this.screenWidthDp = screenWidthDp;
         this.screenHeightDp = screenHeightDp;
+    }
+
+    /** Near/far thresholds (with hysteresis) for reflectance proximity sensors. */
+    public static final float REFLECTANCE_NEAR = 100f;
+    public static final float REFLECTANCE_FAR = 50f;
+
+    /**
+     * The proximity sensor reports raw reflectance (higher = closer) instead of a distance below
+     * {@code maxRange}.
+     */
+    public boolean proximityIsReflectance() {
+        return this == NSPANEL_PRO;
     }
 
     public static DeviceModel getReportedDevice(){
