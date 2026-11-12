@@ -50,7 +50,9 @@ DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardR
 | `cards` | `CardRenderer` API, `CardContext`, `CardRegistry`, `CardCatalog`, `HaCard`, `StateBadge`, core cards |
 | `rows` | `RowRenderer` API, `RowRegistry`, `GenericEntityRow` and the core rows |
 | `actions` | `ActionHandler`, `Modifier.haActions`, `Navigator` |
-| `popup` | `PopupHost`, `HashPopup`, `HaDialog`, more-info dialog |
+| `popup` | `PopupHost`, `HashPopup`, `HaDialog`, browser_mod popup, more-info dialog, toasts |
+| `browsermod` | browser_mod protocol, `BrowserMod` client, `hass.callService` heartbeat parser |
+| `html` | HTML subset parser and renderer, CSS value helpers |
 | `theme` | `HaTheme` tokens (colors, typography, dimensions) and `CssColors` (CSS colors, state colors) |
 | `icons` | MDI webfont (`assets/mdi.ttf`) + name map (`assets/mdi-map.txt`), `MdiIcon` |
 | `markdown` | Markdown subset parser and renderer (`ha-markdown` look) |
@@ -73,6 +75,20 @@ Only entities on screen are subscribed (`subscribe_entities` with `entity_ids`, 
 incrementally when a popup opens). Every entity has its own `StateFlow`; a card reading
 `ctx.entity(id)` recomposes only when that entity changes. Templates are shared and replayed
 (`renderTemplate` is cached per template + variables). No WebView, no Material dependency.
+
+### browser_mod
+
+The dashboard registers as a browser_mod browser (`browser_mod/connect`, `register`, `update`),
+by default as `walldisplay Wohnbereich`, the id the web dashboard used, so automations that
+target it keep working (`--es browser_id 'walldisplay Eingang'`, `none` disables it; do not
+run the web dashboard with the same id at the same time). It reports the `path`,
+`visibility` (activity started/stopped), size, user and activity sensors and runs `popup`
+(card config or HTML string, timeout progress bar, buttons, `dismiss_action`/`timeout_action`),
+`close_popup`, `notification`, `navigate`, `refresh`, `more_info` and `sequence`.
+`javascript` is not executed: a single `hass.callService(…)` with literal arguments (the
+watchdog heartbeat) is run as a service call, anything else is logged and ignored.
+HTML popup content is drawn natively by `html/Html.kt` (block/inline elements, `ha-icon`,
+inline styles for color, font size/weight, opacity, alignment, margins and paddings).
 
 ## Adding a card type
 

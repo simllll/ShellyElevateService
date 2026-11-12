@@ -3,10 +3,13 @@ package com.stretter.shellyelevateservice.dashboard.popup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -23,9 +26,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
 import com.stretter.shellyelevateservice.dashboard.cards.CardContext
+import com.stretter.shellyelevateservice.dashboard.theme.HaPalette
 import com.stretter.shellyelevateservice.dashboard.theme.HaTheme
+import com.stretter.shellyelevateservice.dashboard.ui.HaButton
+import com.stretter.shellyelevateservice.dashboard.ui.HaIconButton
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,7 +69,7 @@ class PopupHost {
 
     private val entries = mutableStateListOf<Entry>()
     private val ids = AtomicInteger()
-    private var toast by mutableStateOf<Pair<Int, String>?>(null)
+    private var toast by mutableStateOf<Notification?>(null)
 
     val isShowingPopup: Boolean get() = entries.isNotEmpty()
 
@@ -119,14 +126,29 @@ class PopupHost {
     }
 
     fun showMoreInfo(entityId: String) {
-        show(id = "more-info") { MoreInfoDialog(entityId) }
+        show(id = MORE_INFO_ID) { MoreInfoDialog(entityId) }
     }
 
-    /** `browser_mod.popup`: `title`, `content` (card config or text), `size`, `dismissable`, `timeout`. */
+    /**
+     * `browser_mod.popup` (see [BrowserModPopup]). Popups with the same `tag` replace each other;
+     * `dismiss_action` runs whenever the popup goes away other than by its buttons or timeout.
+     */
     fun showBrowserModPopup(data: JsonObject) {
-        val dismissible = data["dismissable"]?.toString() != "false"
-        val timeout = data["timeout"]?.toString()?.trim('"')?.toDoubleOrNull()?.toLong()
-        show(id = "browser-mod", dismissible = dismissible, timeoutMs = timeout) { BrowserModPopup(data) }
+        val state = BrowserModPopupState(data)
+        show(
+            id = BROWSER_MOD_PREFIX + state.tag,
+            dismissible = state.dismissable,
+            onDismiss = { state.onClosed() },
+        ) { BrowserModPopup(state) }
+    }
+
+    /** `browser_mod.close_popup`: closes the popups with [tag], or all browser_mod popups and more-info. */
+    fun closeBrowserModPopups(tag: String?) {
+        val ids = entries.filter {
+            if (tag.isNullOrEmpty()) it.id.startsWith(BROWSER_MOD_PREFIX) || it.id == MORE_INFO_ID
+            else it.id == BROWSER_MOD_PREFIX + tag
+        }.map { it.id }
+        ids.asReversed().forEach { dismiss(it) }
     }
 
     fun confirm(text: String, title: String? = null, onConfirm: () -> Unit) {
@@ -134,9 +156,36 @@ class PopupHost {
     }
 
     /** Short message at the bottom (`showToast`). */
-    fun toast(message: String) {
-        toast = ids.incrementAndGet() to message
+    fun toast(message: String) = notify(message)
+
+    /**
+     * HA's toast (`hass-notification`, used by `browser_mod.notification`): bottom center,
+     * [durationMs] null or up to 4 s shows it for 4 s, 0 or less keeps it until dismissed.
+     * [actionText] adds a button running [onAction]; [dismissable] adds a close button.
+     */
+    fun notify(
+        message: String,
+        durationMs: Long? = null,
+        actionText: String? = null,
+        onAction: () -> Unit = {},
+        dismissable: Boolean = false,
+    ) {
+        val duration = when {
+            durationMs == null || durationMs in 1..4000 -> 4000L
+            durationMs <= 0 -> null
+            else -> durationMs
+        }
+        toast = Notification(ids.incrementAndGet(), message, duration, actionText, onAction, dismissable)
     }
+
+    internal class Notification(
+        val id: Int,
+        val message: String,
+        val durationMs: Long?,
+        val actionText: String?,
+        val onAction: () -> Unit,
+        val dismissable: Boolean,
+    )
 
     /** Renders the layer; call once, above the dashboard content. */
     @Composable
@@ -172,26 +221,56 @@ class PopupHost {
     @Composable
     private fun Toast() {
         val current = toast ?: return
-        LaunchedEffect(current.first) {
-            delay(4000)
-            if (toast?.first == current.first) toast = null
+        current.durationMs?.let { duration ->
+            LaunchedEffect(current.id) {
+                delay(duration)
+                if (toast?.id == current.id) toast = null
+            }
         }
-        Box(Modifier.fillMaxSize().padding(bottom = 24.dp), contentAlignment = Alignment.BottomCenter) {
-            ToastBox(current.second)
+        Box(Modifier.fillMaxSize().padding(bottom = 16.dp), contentAlignment = Alignment.BottomCenter) {
+            ToastBox(
+                current,
+                onAction = { toast = null; current.onAction() },
+                onClose = { toast = null },
+            )
         }
+    }
+
+    companion object {
+        const val MORE_INFO_ID = "more-info"
+        const val BROWSER_MOD_PREFIX = "browser-mod:"
     }
 }
 
+/** `ha-toast`: neutral-10 surface, 4px radius, 350–650px wide, 48px high, 12/16px padding. */
 @Composable
-private fun BoxScope.ToastBox(message: String) {
+private fun ToastBox(notification: PopupHost.Notification, onAction: () -> Unit, onClose: () -> Unit) {
     val t = HaTheme.typography
-    BasicText(
-        message,
-        style = t.style(t.sizeM, color = HaTheme.colors.primaryText),
-        modifier = Modifier
-            .background(HaTheme.colors.secondaryBackground, RoundedCornerShape(HaTheme.dimens.radiusSm))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-    )
+    val c = HaTheme.colors
+    val shape = RoundedCornerShape(HaTheme.dimens.radiusSm)
+    Row(
+        Modifier
+            .widthIn(min = 350.dp, max = 650.dp)
+            .heightIn(min = 48.dp)
+            .shadow(8.dp, shape)
+            .background(HaPalette.Neutral10, shape)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        BasicText(
+            notification.message,
+            style = t.style(t.sizeM, color = c.primaryText),
+            modifier = Modifier.weight(1f, fill = false).padding(vertical = 6.dp),
+        )
+        if (notification.actionText != null) {
+            HaButton(notification.actionText, onClick = onAction, outlined = false)
+        }
+        if (notification.dismissable) {
+            HaIconButton("mdi:close", onClick = onClose, size = 36.dp, iconSize = 20.dp)
+        }
+    }
 }
 
 /**

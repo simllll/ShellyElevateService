@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.stretter.shellyelevateservice.dashboard.browsermod.browserModReporting
 import com.stretter.shellyelevateservice.dashboard.cards.CardContext
 import com.stretter.shellyelevateservice.dashboard.hass.ConnectionState
 import com.stretter.shellyelevateservice.dashboard.icons.MdiIcon
@@ -44,6 +45,7 @@ fun DashboardScreen(runtime: DashboardRuntime) {
             Modifier
                 .fillMaxSize()
                 .background(HaTheme.colors.primaryBackground)
+                .browserModReporting(runtime.browserMod)
         ) {
             when (val state = lovelace) {
                 is LovelaceState.Loaded -> CurrentView(state.config, runtime)

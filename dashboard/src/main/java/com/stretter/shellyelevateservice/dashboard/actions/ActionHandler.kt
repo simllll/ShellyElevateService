@@ -1,6 +1,8 @@
 package com.stretter.shellyelevateservice.dashboard.actions
 
 import android.util.Log
+import com.stretter.shellyelevateservice.dashboard.browsermod.BrowserModProtocol
+import com.stretter.shellyelevateservice.dashboard.browsermod.JsServiceCall
 import com.stretter.shellyelevateservice.dashboard.hass.HassClient
 import com.stretter.shellyelevateservice.dashboard.hass.toggleService
 import com.stretter.shellyelevateservice.dashboard.json.EmptyJsonObject
@@ -30,8 +32,8 @@ enum class ActionTrigger(val key: String) {
  *
  * Supported actions: `more-info`, `toggle`, `perform-action` / `call-service`, `navigate`
  * (`#hash` opens bubble-card pop-ups via [PopupHost]), `url` (ignored on the kiosk), `none`,
- * `fire-dom-event` with a `browser_mod` payload (`browser_mod.popup`, `close_popup`, `more_info`,
- * `navigate`, `sequence`, `delay`; any other service is called on HA). `confirmation` is honoured.
+ * `fire-dom-event` with a `browser_mod` payload (see [browserModCommand]; any other service is
+ * called on HA). `confirmation` is honoured.
  */
 class ActionHandler(
     private val hass: HassClient,
@@ -91,41 +93,87 @@ class ActionHandler(
             }
             "navigate" -> action.string("navigation_path")?.let { navigator.navigate(it, action.bool("navigation_replace") == true) }
             "url" -> Log.i(TAG, "url action ignored on the kiosk: ${action.string("url_path")}")
-            "fire-dom-event" -> action.obj("browser_mod")?.let { browserMod(it, context) }
+            "fire-dom-event" -> action.obj("browser_mod")?.let { browserMod(it) }
             "assist" -> Log.i(TAG, "assist action not supported")
             else -> Log.w(TAG, "unknown action ${action.string("action")}")
         }
     }
 
-    /** Runs a browser_mod call `{service, data}` as the browser would (popups are emulated natively). */
-    fun browserMod(payload: JsonObject, context: JsonObject = EmptyJsonObject) {
-        val service = payload.string("service")
-        val data = payload.obj("data") ?: EmptyJsonObject
-        when (service) {
-            "browser_mod.popup" -> popups.showBrowserModPopup(data)
-            "browser_mod.close_popup" -> popups.dismissTop()
-            "browser_mod.more_info" -> data.string("entity")?.let { popups.showMoreInfo(it) }
-            "browser_mod.navigate" -> data.string("path")?.let { navigator.navigate(it, false) }
-            "browser_mod.sequence" -> scope.launch {
+    /**
+     * Runs a browser_mod call `{service, data, target}` as the browser would (`_service_action`):
+     * `browser_mod.*` services run locally (popups are emulated natively) unless they target
+     * browsers explicitly (`browser_id`/`user_id`), everything else is called on HA.
+     */
+    fun browserMod(payload: JsonObject) {
+        val service = payload.string("service") ?: return
+        var data = payload.obj("data") ?: EmptyJsonObject
+        val local = service.startsWith("browser_mod.") || !service.contains('.')
+        // `browser_id: THIS` targets the browser itself.
+        if (data.string("browser_id") == "THIS") data = JsonObject(data - "browser_id")
+        if (local && data["browser_id"] == null && data["user_id"] == null) {
+            browserModCommand(service.removePrefix("browser_mod."), data)
+            return
+        }
+        val domain = service.substringBefore('.')
+        val name = service.substringAfter('.')
+        callService(domain, name, data, payload.obj("target"))
+    }
+
+    /**
+     * A browser_mod command addressed to this browser, from a dashboard action or from HA
+     * (`browser_mod/connect` events). [name] has no `browser_mod.` prefix.
+     */
+    fun browserModCommand(name: String, data: JsonObject) {
+        when (name) {
+            "popup" -> popups.showBrowserModPopup(data)
+            "close_popup" -> popups.closeBrowserModPopups(data.string("tag"))
+            "more_info" -> data.string("entity")?.let { popups.showMoreInfo(it) }
+            "navigate" -> data.string("path")?.let { navigator.navigate(it, false) }
+            "refresh" -> navigator.reload()
+            "notification" -> data.string("message")?.let { message ->
+                val action = data["action"]
+                popups.notify(
+                    message = message,
+                    durationMs = data["duration"].asString()?.toDoubleOrNull()?.toLong(),
+                    actionText = data.string("action_text")?.takeIf { it.isNotBlank() && action != null },
+                    onAction = { runBrowserModActions(action) },
+                    dismissable = data.bool("dismissable") ?: true,
+                )
+            }
+            "sequence" -> scope.launch {
                 (data["sequence"] as? JsonArray)?.forEach { step ->
-                    step.asObject()?.let { s ->
-                        if (s.string("service") == "browser_mod.delay") {
-                            kotlinx.coroutines.delay(s.obj("data")?.get("time").asString()?.toLongOrNull() ?: 0L)
-                        } else {
-                            browserMod(s, context)
-                        }
+                    val s = step.asObject() ?: return@forEach
+                    if (s.string("service")?.removePrefix("browser_mod.") == "delay") {
+                        kotlinx.coroutines.delay(s.obj("data")?.get("time").asString()?.toDoubleOrNull()?.toLong() ?: 0L)
+                    } else {
+                        browserMod(s)
                     }
                 }
             }
-            "browser_mod.refresh" -> navigator.reload()
-            null -> Unit
-            else -> {
-                // Services of other integrations are called on HA directly.
-                val domain = service.substringBefore('.')
-                val name = service.substringAfter('.')
-                if (domain != "browser_mod") callService(domain, name, data, null)
-                else Log.i(TAG, "browser_mod service not emulated: $service")
+            "delay" -> Unit // only meaningful inside a sequence
+            "javascript" -> {
+                val code = data.string("code").orEmpty()
+                val call = JsServiceCall.parse(code)
+                if (call != null) callService(call.domain, call.service, call.data, call.target)
+                else Log.i(TAG, "browser_mod.javascript ignored (not a hass.callService call): ${code.take(120)}")
             }
+            else -> Log.i(TAG, "browser_mod command not emulated: $name")
+        }
+    }
+
+    /**
+     * Runs a popup/notification action like browser_mod: one object or a list of
+     * `{action|service, data, target}` (an `action` other than `call-service` names the service).
+     */
+    fun runBrowserModActions(actions: JsonElement?) {
+        val list = when (actions) {
+            is JsonArray -> actions.mapNotNull { it.asObject() }
+            is JsonObject -> listOf(actions)
+            else -> return
+        }
+        for (a in list) {
+            val service = BrowserModProtocol.serviceOf(a) ?: continue
+            browserMod(jsonOf("service" to service, "data" to a.obj("data"), "target" to a.obj("target")))
         }
     }
 

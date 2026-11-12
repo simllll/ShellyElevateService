@@ -2,6 +2,7 @@ package com.stretter.shellyelevateservice.dashboard.cards
 
 import com.stretter.shellyelevateservice.dashboard.custom.registerCustomCards
 import com.stretter.shellyelevateservice.dashboard.custom.registerCustomRows
+import com.stretter.shellyelevateservice.dashboard.cards.bubble.BubbleCard
 import com.stretter.shellyelevateservice.dashboard.rows.RowRegistry
 import com.stretter.shellyelevateservice.dashboard.rows.registerCoreRows
 
@@ -24,8 +25,8 @@ object CardCatalog {
         registry.register("history-graph") { HistoryGraphCard(it) }
         registry.register("custom:refreshable-picture-card") { RefreshablePictureCard(it) }
         registry.registerCustomCards()
-        // Custom cards (implemented separately):
-        // registry.register("custom:bubble-card") { ... }
+        registry.register("alarm-panel") { AlarmPanelCard(it) }
+        registry.register("custom:bubble-card") { BubbleCard.create(it) }
         registry.register("custom:xiaomi-vacuum-map-card") { com.stretter.shellyelevateservice.dashboard.cards.vacuum.VacuumMapCard(it) }
     }
 

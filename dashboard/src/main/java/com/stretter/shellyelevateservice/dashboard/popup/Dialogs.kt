@@ -29,17 +29,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.stretter.shellyelevateservice.dashboard.cards.CardLayout
-import com.stretter.shellyelevateservice.dashboard.cards.RenderCard
-import com.stretter.shellyelevateservice.dashboard.json.asObject
-import com.stretter.shellyelevateservice.dashboard.json.asString
-import com.stretter.shellyelevateservice.dashboard.json.jsonOf
-import com.stretter.shellyelevateservice.dashboard.json.string
 import com.stretter.shellyelevateservice.dashboard.theme.HaTheme
 import com.stretter.shellyelevateservice.dashboard.ui.HaButton
 import com.stretter.shellyelevateservice.dashboard.ui.HaIconButton
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 
 /** Dialog widths of `ha-wa-dialog` (`--ha-dialog-width-sm/md/lg`). */
 enum class DialogSize(val width: Dp) { SMALL(320.dp), MEDIUM(580.dp), LARGE(1024.dp), FULLSCREEN(Dp.Infinity) }
@@ -116,37 +108,5 @@ internal fun PopupScope.ConfirmDialog(title: String?, text: String, onConfirm: (
         },
     ) {
         BasicText(text, style = t.style(t.sizeM, color = HaTheme.colors.primaryText))
-    }
-}
-
-/**
- * browser_mod popup: `content` is a card config, a list of card configs (vertical stack) or text
- * (rendered as markdown). `size`: normal / wide / fullscreen / classic.
- */
-@Composable
-internal fun PopupScope.BrowserModPopup(data: JsonObject) {
-    val size = when (data.string("size")) {
-        "wide" -> DialogSize.LARGE
-        "fullscreen" -> DialogSize.FULLSCREEN
-        else -> DialogSize.MEDIUM
-    }
-    val content = data["content"]
-    val card: JsonObject? = remember(content) {
-        when (content) {
-            is JsonObject -> content
-            is JsonArray -> jsonOf("type" to "vertical-stack", "cards" to content)
-            else -> content.asString()?.let { jsonOf("type" to "markdown", "content" to it, "text_only" to true) }
-        }
-    }
-    HaDialog(title = data.string("title"), size = size, showClose = data["dismissable"]?.toString() != "false") {
-        if (card != null) ctx.withLayout(CardLayout.STACK).RenderCard(card, Modifier.fillMaxWidth())
-        else Box(Modifier.fillMaxWidth())
-        data["right_button"].asString()?.let { label ->
-            Spacer(Modifier.padding(top = 8.dp))
-            HaButton(label, onClick = {
-                data["right_button_action"].asObject()?.let { ctx.actions.browserMod(it) }
-                dismiss()
-            }, filled = true)
-        }
     }
 }
