@@ -70,6 +70,9 @@ class HassClient(
 
     val store = EntityStore()
 
+    /** Entity registry entries on demand (auto-entities `hidden_by`, `label`, … rules). */
+    val entityRegistry: EntityRegistryCache by lazy { EntityRegistryCache(this, scope) }
+
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.NotConfigured)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
