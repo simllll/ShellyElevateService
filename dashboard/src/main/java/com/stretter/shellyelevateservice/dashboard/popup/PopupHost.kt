@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import com.stretter.shellyelevateservice.dashboard.lovelace.LocalViewActive
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -212,6 +213,7 @@ class PopupHost {
      */
     @Composable
     fun Floating(content: @Composable () -> Unit) {
+        if (!LocalViewActive.current) return
         val key = remember { Any() }
         val latest by rememberUpdatedState(content)
         DisposableEffect(key) {
@@ -332,7 +334,7 @@ fun PopupHost.HashPopup(
 ) {
     val current by this.hash.collectAsState()
     val latest by rememberUpdatedState(content)
-    if (current != hash) return
+    if (current != hash || !LocalViewActive.current) return
     DisposableEffect(hash) {
         val id = show(
             id = "hash:$hash",

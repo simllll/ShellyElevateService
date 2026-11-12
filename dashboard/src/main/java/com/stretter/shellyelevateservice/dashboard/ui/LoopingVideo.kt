@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
+import com.stretter.shellyelevateservice.dashboard.lovelace.LocalViewActive
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
@@ -50,7 +51,7 @@ fun LoopingVideo(url: String, headers: Map<String, String>, modifier: Modifier =
         onDispose { lifecycle.removeObserver(observer) }
     }
     Box(modifier.background(Color.Black)) {
-        if (started) {
+        if (started && LocalViewActive.current) {
             key(url, headers) {
                 AndroidView(
                     factory = { context -> VideoTextureView(context, url, headers) },
