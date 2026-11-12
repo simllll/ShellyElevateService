@@ -23,7 +23,7 @@ object CardCatalog {
         // registry.register("custom:bubble-card") { ... }
         // registry.register("custom:auto-entities") { ... }
         // registry.register("custom:mushroom-template-card") { ... }
-        // registry.register("custom:xiaomi-vacuum-map-card") { ... }
+        registry.register("custom:xiaomi-vacuum-map-card") { com.stretter.shellyelevateservice.dashboard.cards.vacuum.VacuumMapCard(it) }
         // registry.register("custom:refreshable-picture-card") { ... }
         // registry.register("weather-forecast") { ... }
         // registry.register("history-graph") { ... }
