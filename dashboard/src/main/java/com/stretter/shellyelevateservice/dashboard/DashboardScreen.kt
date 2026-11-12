@@ -29,6 +29,7 @@ import com.stretter.shellyelevateservice.dashboard.hass.ConnectionState
 import com.stretter.shellyelevateservice.dashboard.icons.MdiIcon
 import com.stretter.shellyelevateservice.dashboard.json.objects
 import com.stretter.shellyelevateservice.dashboard.json.string
+import com.stretter.shellyelevateservice.dashboard.lovelace.MasonryView
 import com.stretter.shellyelevateservice.dashboard.lovelace.SectionsView
 import com.stretter.shellyelevateservice.dashboard.theme.HaTheme
 import com.stretter.shellyelevateservice.dashboard.theme.ProvideHaTheme
@@ -76,12 +77,13 @@ private fun CurrentView(config: JsonObject, runtime: DashboardRuntime) {
     RenderView(view, runtime.cardContext)
 }
 
-/** Renders a view; only `sections` views are supported natively. */
+/** Renders a view: `sections`, or `masonry` (also a view without `type`). */
 @Composable
 fun RenderView(view: JsonObject, ctx: CardContext) {
     when (view.string("type")) {
         "sections" -> SectionsView(view, ctx)
-        else -> Message("mdi:view-dashboard-outline", "Ansichtstyp „${view.string("type") ?: "masonry"}“ wird nicht unterstützt", "Nur Abschnitte-Ansichten (sections) werden nativ dargestellt.")
+        null, "masonry" -> MasonryView(view, ctx)
+        else -> Message("mdi:view-dashboard-outline", "Ansichtstyp „${view.string("type")}“ wird nicht unterstützt", "Nativ dargestellt werden Abschnitte- (sections) und Masonry-Ansichten.")
     }
 }
 
