@@ -55,6 +55,7 @@ class BrowserModPlayer(
     private var mainSrc = ""
     private var mainExtra: JsonObject = EmptyJsonObject
     private var mainPrepared = false
+    private var announcementPrepared = false
     /** The media should be playing (set before preparation finishes, like `audio.play()`). */
     private var mainWanted = false
     private var mainEnded = false
@@ -87,7 +88,8 @@ class BrowserModPlayer(
         get() {
             val announcing = announcement != null
             val player = if (announcing) announcement else main
-            val prepared = announcing || mainPrepared
+            // getDuration() before onPrepared puts MediaPlayer into its error state and aborts playback.
+            val prepared = if (announcing) announcementPrepared else mainPrepared
             return PlayerState(
                 state = when {
                     announcing -> "playing"
@@ -202,6 +204,7 @@ class BrowserModPlayer(
         Log.i(TAG, "announcement $originalUrl")
         announcement = createPlayer(media, announcementAttributes(),
             onPrepared = { mp ->
+                announcementPrepared = true
                 announcementFocus.request()
                 applyVolume()
                 mp.start()
@@ -328,6 +331,7 @@ class BrowserModPlayer(
     private fun releaseAnnouncement() {
         announcement?.release()
         announcement = null
+        announcementPrepared = false
         announcementSrc = ""
         announcementExtra = EmptyJsonObject
     }
