@@ -77,6 +77,7 @@ dependencies {
     implementation(platform(libs.okhttpbom))
     implementation(libs.okhttp)
     implementation(libs.appcompat)
+    implementation(project(":dashboard"))
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)

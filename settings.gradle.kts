@@ -16,4 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "ShellyElevateV2"
 include(":app")
+include(":dashboard")
  
