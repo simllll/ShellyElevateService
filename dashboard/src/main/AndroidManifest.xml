@@ -16,7 +16,7 @@
             android:label="Dashboard"
             android:launchMode="singleTask"
             android:process=":dashboard"
-            android:screenOrientation="sensorLandscape"
+            android:screenOrientation="nosensor"
             android:theme="@style/Theme.Dashboard" />
 
         <!--
