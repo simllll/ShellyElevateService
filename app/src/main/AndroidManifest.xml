@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- ESPHome Bluetooth proxy (bleProxyEnabled): BLE scans need location (pm grant) -->
+    <!-- Microphone samples for the doorbell detector (adb only, pm grant) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -52,6 +54,16 @@
             android:permission="android.permission.DUMP">
             <intent-filter>
                 <action android:name="com.stretter.shellyelevateservice.SET_API_TOKEN" />
+            </intent-filter>
+        </receiver>
+
+        <!-- adb only (DUMP): record microphone samples, see audio/AudioSampleReceiver -->
+        <receiver
+            android:name=".audio.AudioSampleReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.stretter.shellyelevateservice.RECORD_AUDIO_SAMPLE" />
             </intent-filter>
         </receiver>
 
