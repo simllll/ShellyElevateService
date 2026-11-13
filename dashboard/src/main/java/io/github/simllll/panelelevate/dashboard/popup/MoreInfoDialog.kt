@@ -1,5 +1,6 @@
 package io.github.simllll.panelelevate.dashboard.popup
 
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -124,6 +125,7 @@ private fun PopupScope.Controls(entity: EntityState) {
             val (domain, service) = turnOnOffService(id, true)
             HaButton("Ausführen", { actions.callService(domain, service, target, null) }, filled = true)
         }
+        "media_player" -> MediaControls(entity)
         "lock" -> {
             val locked = entity.state == "locked"
             HaButton(if (locked) "Aufsperren" else "Zusperren", { actions.callService("lock", if (locked) "unlock" else "lock", target, null) }, filled = true)
@@ -161,3 +163,88 @@ private fun PopupScope.ToggleRow(entity: EntityState) {
         }, enabled = !entity.isUnavailable)
     }
 }
+
+/**
+ * Media player controls like `more-info-media_player`: now playing, power/previous/play-pause/
+ * next (as supported), volume with mute, -/+ (5 % steps, or volume_down/up) and a slider, sources.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PopupScope.MediaControls(entity: EntityState) {
+    val c = HaTheme.colors
+    val t = HaTheme.typography
+    val id = entity.entityId
+    val f = entity.attrDouble("supported_features")?.toInt() ?: 0
+    fun has(bit: Int) = f and bit != 0
+    fun call(service: String, vararg extra: Pair<String, Any?>) =
+        ctx.actions.callService("media_player", service, jsonOf("entity_id" to id, *extra), null)
+    val off = entity.state == "off"
+
+    val title = entity.attr("media_title").asString()
+    val artist = entity.attr("media_artist").asString() ?: entity.attr("app_name").asString()
+    if (!off && (title != null || artist != null)) {
+        if (title != null) BasicText(title, style = t.style(t.sizeL, FontWeight.Medium, t.lineHeightCondensed, color = c.primaryText), maxLines = 2)
+        if (artist != null) BasicText(artist, style = t.style(t.sizeM, color = c.secondaryText), maxLines = 1)
+        Spacer(Modifier.height(16.dp))
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (has(MP_TURN_ON) || has(MP_TURN_OFF)) HaIconButton("mdi:power", { call(if (off) "turn_on" else "turn_off") })
+        if (!off) {
+            if (has(MP_PREVIOUS)) HaIconButton("mdi:skip-previous", { call("media_previous_track") })
+            if (has(MP_PAUSE) || has(MP_PLAY)) {
+                val playing = entity.state == "playing"
+                HaIconButton(if (playing) "mdi:pause" else "mdi:play", { call("media_play_pause") }, size = 56.dp, iconSize = 32.dp)
+            }
+            if (has(MP_NEXT)) HaIconButton("mdi:skip-next", { call("media_next_track") })
+        }
+    }
+
+    if (!off && (has(MP_VOLUME_SET) || has(MP_VOLUME_STEP))) {
+        val volume = (entity.attrDouble("volume_level") ?: 0.0).coerceIn(0.0, 1.0)
+        val muted = entity.attr("is_volume_muted").asString() == "true" || entity.attr("is_volume_muted").toString() == "true"
+        fun step(delta: Double) {
+            if (has(MP_VOLUME_SET)) call("volume_set", "volume_level" to ((volume + delta).coerceIn(0.0, 1.0) * 100).roundToInt() / 100.0)
+            else call(if (delta > 0) "volume_up" else "volume_down")
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (has(MP_VOLUME_MUTE)) HaIconButton(if (muted) "mdi:volume-off" else "mdi:volume-high", { call("volume_mute", "is_volume_muted" to !muted) })
+            HaIconButton("mdi:minus", { step(-0.05) })
+            if (has(MP_VOLUME_SET)) {
+                HaSlider(
+                    (volume * 100).toFloat(),
+                    { call("volume_set", "volume_level" to (it / 100.0)) },
+                    modifier = Modifier.weight(1f),
+                    color = c.primary,
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            HaIconButton("mdi:plus", { step(0.05) })
+            if (has(MP_VOLUME_SET)) {
+                BasicText("${(volume * 100).roundToInt()} %", style = t.style(t.sizeM, color = c.secondaryText), modifier = Modifier.padding(start = 4.dp))
+            }
+        }
+    }
+
+    val sources = entity.attr("source_list").asArray()?.mapNotNull { it.asString() }.orEmpty()
+    if (!off && has(MP_SELECT_SOURCE) && sources.isNotEmpty()) {
+        val current = entity.attr("source").asString()
+        Spacer(Modifier.height(16.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            sources.forEach { source -> HaButton(source, { call("select_source", "source" to source) }, filled = source == current) }
+        }
+    }
+}
+
+private const val MP_PAUSE = 1
+private const val MP_VOLUME_SET = 4
+private const val MP_VOLUME_MUTE = 8
+private const val MP_PREVIOUS = 16
+private const val MP_NEXT = 32
+private const val MP_TURN_ON = 128
+private const val MP_TURN_OFF = 256
+private const val MP_VOLUME_STEP = 1024
+private const val MP_SELECT_SOURCE = 2048
+private const val MP_PLAY = 16384
