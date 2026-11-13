@@ -271,8 +271,16 @@ public class DeviceHelper {
         }
     }
 
+    /**
+     * The model has a temperature/humidity sensor and its sysfs node exists. Shelly firmware
+     * vBlake.a21b392 (2026-11) moved the chip to a root-only CHT8305 without the sht3x node.
+     */
+    public boolean hasTempHumSensor() {
+        return device.hasTempHumSensor && new File(tempAndHumFile).exists();
+    }
+
     public double getTemperature() {
-        if (!device.hasTempHumSensor) return -999;
+        if (!hasTempHumSensor()) return -999;
         try
         {
             var content = readFileContent(tempAndHumFile);
@@ -290,7 +298,7 @@ public class DeviceHelper {
     }
 
     public double getHumidity() {
-        if (!device.hasTempHumSensor) return -999;
+        if (!hasTempHumSensor()) return -999;
         try {
             var content = readFileContent(tempAndHumFile);
             if (content == null || content.isEmpty()) return -999;

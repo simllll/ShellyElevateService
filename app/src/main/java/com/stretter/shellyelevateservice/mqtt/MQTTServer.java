@@ -107,7 +107,7 @@ public class MQTTServer {
     private void schedulePeriodicTempHum() {
         scheduler.scheduleWithFixedDelay(() -> {
             try {
-                publishTempAndHum();
+                if (mDeviceHelper.hasTempHumSensor()) publishTempAndHum();
             } catch (Throwable t) {
                 // an escaping exception would cancel the fixed-delay schedule for good
                 Log.e("MQTT", "Periodic temp/humidity publish failed", t);
@@ -373,7 +373,7 @@ public class MQTTServer {
     private void publishCurrentStates() {
         DeviceModel device = DeviceModel.getReportedDevice();
         // Each state on its own: one unreadable sensor must not block all the others
-        if (device.hasTempHumSensor) safely("temp/hum", this::publishTempAndHum);
+        if (mDeviceHelper.hasTempHumSensor()) safely("temp/hum", this::publishTempAndHum);
         for (int num = 0; num < device.inputs; num++) {
             final int relay = num;
             safely("relay " + relay, () -> publishRelay(relay, mDeviceHelper.getRelay(relay)));
@@ -631,7 +631,8 @@ public class MQTTServer {
 
         JSONObject components = new JSONObject();
 
-        if (model.hasTempHumSensor) {
+        // Only announced when the sensor is readable: without it the entities disappear from HA
+        if (mDeviceHelper.hasTempHumSensor()) {
             JSONObject tempSensorPayload = new JSONObject();
             tempSensorPayload.put("p", "sensor");
             tempSensorPayload.put("name", "Temperature");
