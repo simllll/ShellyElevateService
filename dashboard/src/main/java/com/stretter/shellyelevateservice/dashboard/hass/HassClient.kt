@@ -105,6 +105,7 @@ class HassClient(
         val message: JsonObject,
         val onEvent: (JsonElement) -> Unit,
         val onError: (Throwable) -> Unit,
+        val resubscribe: Boolean = true,
     ) {
         var id: Int? = null
     }
@@ -165,6 +166,11 @@ class HassClient(
         pending.clear()
         subscriptionsById.clear()
         subscriptions.forEach { it.id = null }
+        // One-shot subscriptions (e.g. a WebRTC offer) end with the connection.
+        subscriptions.filter { !it.resubscribe }.forEach { sub ->
+            subscriptions.remove(sub)
+            sub.onError(error)
+        }
     }
 
     private fun scheduleReconnect(reason: String) {
@@ -310,9 +316,14 @@ class HassClient(
      * A subscription (`subscribe_events`, `render_template`, `subscribe_trigger`, …) as a cold flow of
      * its `event` payloads. Survives reconnects; collecting starts it, cancelling sends
      * `unsubscribe_events`. Completes with [HassException] if HA rejects the subscription.
+     *
+     * With [resubscribe] false the subscription is not re-sent after a reconnect: the flow fails
+     * with an [IOException] when the connection drops (for subscriptions whose server-side state
+     * dies with the connection, such as `camera/webrtc/offer`, where re-sending would start a
+     * new session).
      */
-    fun subscribe(message: JsonObject): Flow<JsonElement> = callbackFlow {
-        val sub = ActiveSubscription(message, { trySend(it) }, { close(it) })
+    fun subscribe(message: JsonObject, resubscribe: Boolean = true): Flow<JsonElement> = callbackFlow {
+        val sub = ActiveSubscription(message, { trySend(it) }, { close(it) }, resubscribe)
         withContext(proto) {
             subscriptions += sub
             if (authenticated) sendSubscribe(sub)
