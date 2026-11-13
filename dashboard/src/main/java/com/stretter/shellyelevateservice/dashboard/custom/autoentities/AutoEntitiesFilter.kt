@@ -356,10 +356,20 @@ class AutoEntitiesSpec(config: JsonObject) {
      * Port of `update_entities`: static entries + template entries + include matches, minus
      * excludes, sorted, made unique and sliced.
      */
+    // The sorted entity ids only change when entities are added or removed, not on state changes
+    @Volatile private var sortedIdsCache: Pair<Set<String>, List<String>>? = null
+
+    private fun sortedIds(states: Map<String, *>): List<String> {
+        val cached = sortedIdsCache
+        if (cached != null && cached.first.size == states.size && cached.first == states.keys) return cached.second
+        val keys = states.keys.toHashSet()
+        return keys.sorted().also { sortedIdsCache = keys to it }
+    }
+
     fun resolve(templateEntries: List<JsonObject>, env: FilterEnv): List<JsonObject> {
         var list = staticEntries + templateEntries
         if (includes.isNotEmpty()) {
-            val all by lazy(LazyThreadSafetyMode.NONE) { env.states.keys.sorted() }
+            val all by lazy(LazyThreadSafetyMode.NONE) { sortedIds(env.states) }
             for ((rule, filter) in includes) {
                 if (filter == null) {
                     list = list + rule

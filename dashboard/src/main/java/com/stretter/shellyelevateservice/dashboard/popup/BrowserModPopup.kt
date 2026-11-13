@@ -25,6 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import android.os.SystemClock
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -99,10 +101,18 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
     val c = HaTheme.colors
     val t = HaTheme.typography
     val shape = RoundedCornerShape(HaTheme.dimens.radius3xl)
-    val progress = remember(state) { Animatable(0f) }
+    // Stepped timer instead of an animation: a running animation requests a frame on every
+    // vsync, which alone cost ~50 % of a core on the NSPanel
+    val progress = remember(state) { mutableFloatStateOf(0f) }
     state.timeoutMs?.let { timeout ->
         LaunchedEffect(state) {
-            progress.animateTo(1f, tween(timeout.toInt().coerceAtLeast(1), easing = LinearEasing))
+            val start = SystemClock.uptimeMillis()
+            while (true) {
+                val elapsed = SystemClock.uptimeMillis() - start
+                progress.floatValue = (elapsed.toFloat() / timeout).coerceAtMost(1f)
+                if (elapsed >= timeout) break
+                delay(minOf(PROGRESS_STEP_MS, timeout - elapsed))
+            }
             state.suppressDismissAction()
             dismiss()
             actions.runBrowserModActions(data["timeout_action"])
@@ -199,10 +209,7 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
                     .width(width)
                     .height(3.dp)
                     .graphicsLayer {
-                        // ~4 steps per second: every changed frame is a full redraw on these
-                        // GPUs, and a 3dp bar does not need 60 fps
-                        val steps = ((state.timeoutMs ?: 0L) / PROGRESS_STEP_MS).coerceAtLeast(1L).toFloat()
-                        scaleX = kotlin.math.floor(progress.value * steps) / steps
+                        scaleX = progress.floatValue
                         transformOrigin = TransformOrigin(0f, 0.5f)
                     }
                     .background(c.primary)

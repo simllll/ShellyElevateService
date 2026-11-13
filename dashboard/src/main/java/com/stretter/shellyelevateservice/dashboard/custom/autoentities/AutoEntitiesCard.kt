@@ -99,7 +99,8 @@ class AutoEntitiesCard(config: JsonObject) : CardRenderer {
                         return@collect
                     }
                     if (entries.value != result) entries.value = result
-                    delay(THROTTLE_MS)
+                    // Filters over all entities scan ~thousands of states: evaluate them less often
+                    delay(if (needsAll) THROTTLE_ALL_MS else THROTTLE_MS)
                 }
         }
     }
@@ -126,6 +127,7 @@ class AutoEntitiesCard(config: JsonObject) : CardRenderer {
 
     private companion object {
         const val THROTTLE_MS = 500L
+        const val THROTTLE_ALL_MS = 1_500L
         const val SETTLE_MS = 1_500L
     }
 }
