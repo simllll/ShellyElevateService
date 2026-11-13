@@ -327,7 +327,9 @@ public class ShellyElevateService extends Service {
             int delay = sharedPreferences.getInt(SP_SCREEN_SAVER_DELAY, 45);
             long idleTime = System.currentTimeMillis() - lastInteractionTime;
 
-            if (idleTime > delay * 1000L && !isDimmed) {
+            // isDimmed with the display on = woken outside the service (power key, adb): dim again
+            boolean wokenExternally = isDimmed && screenPower != null && isScreenInteractive();
+            if (idleTime > delay * 1000L && (!isDimmed || wokenExternally)) {
                 dimScreen();
             }
         }), 1, 1, TimeUnit.SECONDS);
@@ -553,6 +555,11 @@ public class ShellyElevateService extends Service {
 
     private void dimScreen() {
         Log.i(TAG, "dimScreen() called, isDimmed=" + isDimmed);
+        if (isDimmed && screenPower != null && isScreenInteractive()) {
+            // Woken outside the service (power key, adb, another app): dim again
+            Log.i(TAG, "Marked dimmed but the display is on, dimming again");
+            isDimmed = false;
+        }
         if (isDimmed) {
             Log.i(TAG, "Already dimmed, skipping");
             return;
