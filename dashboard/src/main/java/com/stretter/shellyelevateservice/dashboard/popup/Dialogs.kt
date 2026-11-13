@@ -80,7 +80,7 @@ fun PopupScope.HaDialog(
                     Modifier.fillMaxWidth().padding(start = if (showClose) 0.dp else 12.dp, end = 12.dp, top = 4.dp, bottom = 0.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (showClose) HaIconButton("mdi:close", onClick = { dismiss() }, size = 64.dp, iconSize = 28.dp)
+                    if (showClose) HaIconButton("mdi:close", onClick = { dismiss() }, size = 64.dp)
                     else Spacer(Modifier.width(12.dp))
                     BasicText(
                         title.orEmpty(),
