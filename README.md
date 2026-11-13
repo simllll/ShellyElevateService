@@ -297,8 +297,11 @@ Then add the ESPHome device in HA (Settings → Devices & services, discovered
 encryption key). Notes:
 
 - **NSPanel Pro (Android 8.1)**: Android 8.1 pauses *unfiltered* BLE scans while the display
-  is off; the proxy passes an empty scan filter to stay scanning, but whether that holds on
-  this firmware is not verified yet. The Bluetooth MAC is not readable for apps there, so the
+  is off; the proxy passes an empty scan filter and keeps scanning with the display off
+  (verified: ~400 results in 30 s while asleep). The location permission must be granted as a
+  runtime permission (`adb shell pm grant com.stretter.shellyelevateservice
+  android.permission.ACCESS_FINE_LOCATION`), otherwise Android rejects the scan with a
+  SecurityException in logcat. The Bluetooth MAC is not readable for apps there, so the
   proxy reports only the Wi-Fi MAC (HA then uses it as the scanner's source address).
 - **Wall Display XL (Android 11)**: scans keep running with the display dimmed.
 
