@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">ShellyElevateV2</string>
+    <string name="app_name">PanelElevate</string>
 
     <!-- Sync Preferences -->
     <string name="findIPButtonText">Search for HA URL</string>
@@ -32,7 +32,7 @@
     <string name="android_settings">Android settings</string>
     <string name="exit">Exit</string>
     <string name="back">Back</string>
-    <string name="accessibility_description">This service will show a \"Back\" button when ShellyElevate is not visible.</string>
+    <string name="accessibility_description">This service will show a \"Back\" button when PanelElevate is not visible.</string>
     <string name="accessibility_service_not_enabled">Enable accessibility service to continue</string>
     <string name="min_brightness">Minimum brightness</string>
     <string name="device">Device</string>

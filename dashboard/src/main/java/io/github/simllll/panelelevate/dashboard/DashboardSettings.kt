@@ -1,0 +1,83 @@
+package io.github.simllll.panelelevate.dashboard
+
+import android.content.Context
+import android.content.SharedPreferences
+import io.github.simllll.panelelevate.dashboard.hass.HassConfig
+import io.github.simllll.panelelevate.dashboard.lock.GuestLockConfig
+
+/**
+ * Persistent dashboard settings (SharedPreferences `dashboard`, private to the `:dashboard` process).
+ * Written by [DashboardConfigReceiver], read by [DashboardRuntime].
+ */
+class DashboardSettings(context: Context) {
+    val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    val url: String? get() = prefs.getString(KEY_URL, null)?.takeIf { it.isNotBlank() }
+    val token: String? get() = prefs.getString(KEY_TOKEN, null)?.takeIf { it.isNotBlank() }
+
+    /** Dashboard `url_path` (e.g. `wohnbereich-walldisplay`); null = default dashboard. */
+    val dashboard: String? get() = prefs.getString(KEY_DASHBOARD, null)?.takeIf { it.isNotBlank() }
+
+    /**
+     * UI zoom: 1 CSS px of the web dashboard = [scale] dp. Null = 1 dp per px, which matches the
+     * web layout on an mdpi 1280×800 screen. Use e.g. 0.75 on an hdpi screen to get the same layout.
+     */
+    val scale: Float? get() = prefs.getString(KEY_SCALE, null)?.toFloatOrNull()?.takeIf { it in 0.25f..4f }
+
+    /**
+     * browser_mod browser id this dashboard registers as (default: the id of the web dashboard it
+     * replaces, so automations targeting it keep working). `none` disables browser_mod.
+     */
+    val browserId: String?
+        get() = (prefs.getString(KEY_BROWSER_ID, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_BROWSER_ID)
+            .takeUnless { it.equals("none", ignoreCase = true) }
+
+    /**
+     * Seconds without touching the screen after which the dashboard returns to its first view
+     * (default 120); 0 turns it off.
+     */
+    val returnHomeAfterS: Int
+        get() = prefs.getString(KEY_RETURN_HOME_AFTER_S, null)?.trim()?.toDoubleOrNull()?.toInt()?.coerceAtLeast(0)
+            ?: DEFAULT_RETURN_HOME_AFTER_S
+
+    /**
+     * Guest lock (see `GuestLock`): `lock_entity` (default `binary_sensor.lock_dashboards`, `none`
+     * = off), `lock_video` (default `/local/screensaver.mp4`, `none` = no video) and
+     * `lock_sleep_after_s` (default 10).
+     */
+    val guestLock: GuestLockConfig
+        get() = GuestLockConfig(
+            entity = optionalSetting(KEY_LOCK_ENTITY, GuestLockConfig.DEFAULT_ENTITY),
+            video = optionalSetting(KEY_LOCK_VIDEO, GuestLockConfig.DEFAULT_VIDEO),
+            sleepAfterS = prefs.getString(KEY_LOCK_SLEEP_AFTER_S, null)?.trim()?.toDoubleOrNull()?.toInt()?.coerceAtLeast(1)
+                ?: GuestLockConfig.DEFAULT_SLEEP_AFTER_S,
+        )
+
+    /** The stored value, else [default]; `none` = null. */
+    private fun optionalSetting(key: String, default: String): String? =
+        (prefs.getString(key, null)?.trim()?.takeIf { it.isNotEmpty() } ?: default).takeUnless { it.equals("none", ignoreCase = true) }
+
+    val hassConfig: HassConfig?
+        get() {
+            val u = url ?: return null
+            val t = token ?: return null
+            return HassConfig(u, t)
+        }
+
+    companion object {
+        const val PREFS_NAME = "dashboard"
+        const val KEY_URL = "url"
+        const val KEY_TOKEN = "token"
+        const val KEY_DASHBOARD = "dashboard"
+        const val KEY_SCALE = "scale"
+        const val KEY_BROWSER_ID = "browser_id"
+        const val KEY_RETURN_HOME_AFTER_S = "return_home_after_s"
+        const val KEY_LOCK_ENTITY = "lock_entity"
+        const val KEY_LOCK_VIDEO = "lock_video"
+        const val KEY_LOCK_SLEEP_AFTER_S = "lock_sleep_after_s"
+        const val DEFAULT_BROWSER_ID = "walldisplay Wohnbereich"
+        const val DEFAULT_RETURN_HOME_AFTER_S = 120
+        val ALL_KEYS = listOf(KEY_URL, KEY_TOKEN, KEY_DASHBOARD, KEY_SCALE, KEY_BROWSER_ID, KEY_RETURN_HOME_AFTER_S,
+            KEY_LOCK_ENTITY, KEY_LOCK_VIDEO, KEY_LOCK_SLEEP_AFTER_S)
+    }
+}

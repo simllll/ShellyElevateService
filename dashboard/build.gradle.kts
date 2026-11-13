@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.stretter.shellyelevateservice.dashboard"
+    namespace = "io.github.simllll.panelelevate.dashboard"
     compileSdk = 35
 
     defaultConfig {

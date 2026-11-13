@@ -4,16 +4,16 @@ plugins {
 }
 
 android {
-    namespace = "com.stretter.shellyelevateservice"
+    namespace = "io.github.simllll.panelelevate"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.stretter.shellyelevateservice"
+        applicationId = "io.github.simllll.panelelevate"
         minSdk = 24
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 24
-        versionCode = 2_05_00
-        versionName = "2.5.0"
+        versionCode = 1_00_00
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

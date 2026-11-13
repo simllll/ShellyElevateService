@@ -19,7 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
-# --- ShellyElevate (R8 enabled for release) ---
+# --- PanelElevate (R8 enabled for release) ---
 # Readable stack traces in logcat/crash reports.
 -keepattributes SourceFile,LineNumberTable
 

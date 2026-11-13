@@ -28,13 +28,13 @@
     <uses-permission android:name="android.hardware.sensor.proximity"/>
 
     <application
-        android:name=".ShellyElevateApplication"
+        android:name=".PanelElevateApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ShellyElevateV2"
+        android:theme="@style/Theme.PanelElevate"
         android:usesCleartextTraffic="true">
 
         <receiver
@@ -53,7 +53,7 @@
             android:exported="true"
             android:permission="android.permission.DUMP">
             <intent-filter>
-                <action android:name="com.stretter.shellyelevateservice.SET_API_TOKEN" />
+                <action android:name="io.github.simllll.panelelevate.SET_API_TOKEN" />
             </intent-filter>
         </receiver>
 
@@ -63,7 +63,7 @@
             android:exported="true"
             android:permission="android.permission.DUMP">
             <intent-filter>
-                <action android:name="com.stretter.shellyelevateservice.RECORD_AUDIO_SAMPLE" />
+                <action android:name="io.github.simllll.panelelevate.RECORD_AUDIO_SAMPLE" />
             </intent-filter>
         </receiver>
 
@@ -73,12 +73,12 @@
             android:exported="true"
             android:permission="android.permission.DUMP">
             <intent-filter>
-                <action android:name="com.stretter.shellyelevateservice.SET_SETTING" />
+                <action android:name="io.github.simllll.panelelevate.SET_SETTING" />
             </intent-filter>
         </receiver>
 
         <service
-            android:name=".ShellyElevateService"
+            android:name=".PanelElevateService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />

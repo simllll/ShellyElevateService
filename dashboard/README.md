@@ -13,13 +13,13 @@ The connection is stored in the SharedPreferences `dashboard` of the `:dashboard
 via adb (the receiver is protected by `android.permission.DUMP`, which only the shell holds):
 
 ```sh
-adb shell am broadcast -n com.stretter.shellyelevateservice/.dashboard.DashboardConfigReceiver \
-    -a com.stretter.shellyelevateservice.dashboard.CONFIGURE \
+adb shell am broadcast -n io.github.simllll.panelelevate/.dashboard.DashboardConfigReceiver \
+    -a io.github.simllll.panelelevate.dashboard.CONFIGURE \
     --es url http://192.168.1.20:8123 \
     --es token 'eyJ…long-lived-token…' \
     --es dashboard wohnbereich-walldisplay
 
-adb shell am start -n com.stretter.shellyelevateservice/.dashboard.DashboardActivity
+adb shell am start -n io.github.simllll.panelelevate/.dashboard.DashboardActivity
 ```
 
 All extras are optional; an empty value clears a setting. `--es scale 0.75` zooms the UI
@@ -38,8 +38,8 @@ To keep the dashboard in front with the service's app watchdog (instead of the H
 `watchdogPackage` to `dashboard`; see "Native dashboard as watchdog target" in the main README:
 
 ```sh
-adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
-    -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogPackage --es value dashboard
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+    -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogPackage --es value dashboard
 ```
 
 Use a long-lived token of a **non-admin** HA user per panel (e.g. the panel's own user): the

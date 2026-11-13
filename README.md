@@ -1,9 +1,9 @@
-# ShellyElevateService
+# PanelElevate
 
 > [!CAUTION]
 > All content in this repository is provided "as is" and may render your device unusable. Always exercise caution when working with your device. No warranty or guarantee is provided.
 
-ShellyElevate is a **background service** for the **Shelly Wall Display XL** (and the **Sonoff NSPanel Pro**, see [Supported devices](#supported-devices)) that exposes hardware features to Home Assistant while letting you use the **official Home Assistant Companion app** (or the built-in native dashboard) as your dashboard.
+PanelElevate is a **background service** for the **Shelly Wall Display XL** (and the **Sonoff NSPanel Pro**, see [Supported devices](#supported-devices)) that exposes hardware features to Home Assistant while letting you use the **official Home Assistant Companion app** (or the built-in native dashboard) as your dashboard.
 
 ## Why?
 
@@ -11,7 +11,7 @@ The built-in WebView of the Shelly Wall Display is **slow and buggy**. It kept c
 
 However, switching to a third-party app means you lose access to the great hardware features: temperature/humidity sensors, light sensor, proximity sensor, 4 hardware buttons, and relays. There's no native way to expose these to Home Assistant when using the official HA app (or any other dashboard app like Fully Kiosk, WallPanel, etc.).
 
-**That's why this background service exists** - it lets you use whatever app you like for your dashboard while still having full access to all hardware features. ShellyElevate runs silently in the background and:
+**That's why this background service exists** - it lets you use whatever app you like for your dashboard while still having full access to all hardware features. PanelElevate runs silently in the background and:
 
 - Publishes all sensors and button events to Home Assistant via **MQTT**
 - Provides **screen dimming** with idle timeout (acts as a screensaver)
@@ -71,8 +71,8 @@ No jailbreak required! Just enable developer settings:
 Connect a USB cable to the display and install the APK:
 
 ```bash
-# Install ShellyElevate Service
-adb install ./shellyelevateservice.apk
+# Install PanelElevate Service
+adb install ./panelelevate.apk
 
 # Install Home Assistant Companion app (minimal version)
 adb install ./home-assistant-minimal.apk
@@ -83,13 +83,13 @@ adb install ./home-assistant-minimal.apk
 The service requires the **Write Settings** permission to control screen brightness. This must be granted manually:
 
 ```bash
-adb shell appops set com.stretter.shellyelevateservice WRITE_SETTINGS allow
+adb shell appops set io.github.simllll.panelelevate WRITE_SETTINGS allow
 ```
 
 Optionally, whitelist the app from battery optimization to prevent Android from killing the service:
 
 ```bash
-adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
+adb shell dumpsys deviceidle whitelist +io.github.simllll.panelelevate
 ```
 
 ### 4. Start the Service
@@ -97,13 +97,13 @@ adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
 Start the service manually (it will auto-start on subsequent boots and after app updates):
 
 ```bash
-adb shell am start-foreground-service com.stretter.shellyelevateservice/.ShellyElevateService
+adb shell am start-foreground-service io.github.simllll.panelelevate/.PanelElevateService
 ```
 
 To verify it's running:
 
 ```bash
-adb shell dumpsys activity services com.stretter.shellyelevateservice
+adb shell dumpsys activity services io.github.simllll.panelelevate
 ```
 
 ### 5. Set an HTTP API token
@@ -113,8 +113,8 @@ The HTTP API on port 8080 is reachable by everyone on your network. Settings tha
 over HTTP when an API token is set. The token itself can only be set via adb:
 
 ```bash
-adb shell am broadcast -n com.stretter.shellyelevateservice/.ApiTokenReceiver \
-  -a com.stretter.shellyelevateservice.SET_API_TOKEN --es token 'choose-a-long-random-token'
+adb shell am broadcast -n io.github.simllll.panelelevate/.ApiTokenReceiver \
+  -a io.github.simllll.panelelevate.SET_API_TOKEN --es token 'choose-a-long-random-token'
 ```
 
 (To remove the token again: same command with `--es token ''`.) The receiver is protected by
@@ -136,17 +136,17 @@ Once installed, configure the service via HTTP calls (see Configuration section 
 adb reboot
 ```
 
-After reboot, ShellyElevate will start automatically and launch the Home Assistant app (if watchdog is enabled).
+After reboot, PanelElevate will start automatically and launch the Home Assistant app (if watchdog is enabled).
 
 ## Sonoff NSPanel Pro
 
-ShellyElevate replaces the closed-source *NSPanel Pro Tools* app (`com.seaky.nspanelpro.tools`):
+PanelElevate replaces the closed-source *NSPanel Pro Tools* app (`com.seaky.nspanelpro.tools`):
 one app provides MQTT sensors, relays, sleep/wake, brightness, reboot, watchdog and (optionally) the
 native dashboard.
 
 The NSPanel Pro runs an Android 8.1 userdebug build (480×480 screen). Its backlight node
 (`/sys/class/backlight/backlight/brightness`) is root-only and the shipped `/system/xbin/su` is
-not setuid, so ShellyElevate works **without root**, with the same permissions NSPanel Pro Tools
+not setuid, so PanelElevate works **without root**, with the same permissions NSPanel Pro Tools
 had (`WRITE_SETTINGS`, `WAKE_LOCK`):
 
 - **Brightness / dimming** go through the Android Settings API (Settings 0 = backlight 10).
@@ -192,21 +192,21 @@ adb shell am force-stop com.seaky.nspanelpro.tools
 adb shell pm disable-user --user 0 com.seaky.nspanelpro.tools   # or: adb uninstall com.seaky.nspanelpro.tools
 
 # 2. Install and grant
-adb install ./shellyelevateservice.apk
-adb shell appops set com.stretter.shellyelevateservice WRITE_SETTINGS allow
-adb shell appops set com.stretter.shellyelevateservice SYSTEM_ALERT_WINDOW allow   # only needed if /dev/input/event1 is not readable
-adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
+adb install ./panelelevate.apk
+adb shell appops set io.github.simllll.panelelevate WRITE_SETTINGS allow
+adb shell appops set io.github.simllll.panelelevate SYSTEM_ALERT_WINDOW allow   # only needed if /dev/input/event1 is not readable
+adb shell dumpsys deviceidle whitelist +io.github.simllll.panelelevate
 
 # 3. Android must not turn the screen off or change the brightness on its own
-#    (ShellyElevate's idle timer decides; the sleep trick restores this value every time)
+#    (PanelElevate's idle timer decides; the sleep trick restores this value every time)
 adb shell settings put system screen_off_timeout 2147483647
 adb shell settings put system screen_brightness_mode 0
 
 # 4. Start, then set the API token and configure as in steps 4–6 above
-adb shell am start-foreground-service com.stretter.shellyelevateservice/.ShellyElevateService
+adb shell am start-foreground-service io.github.simllll.panelelevate/.PanelElevateService
 ```
 
-`adb logcat -s ShellyElevateService ScreenOffTimeout InputEventReader DeviceHelper` shows sleep/wake
+`adb logcat -s PanelElevateService ScreenOffTimeout InputEventReader DeviceHelper` shows sleep/wake
 (`Switching screen off via screen-off timeout`, `Screen-off timeout restored to …`) and which input
 devices are read.
 
@@ -216,7 +216,7 @@ NSPanel Pro Tools announced its own MQTT device. After switching, delete that de
 Assistant (Settings → Devices → MQTT) and update automations to the new entities
 (`<id>` = `mqttDeviceId`, the entity ids follow the device name *Sonoff NSPanel Pro*):
 
-| NSPanel Pro Tools | ShellyElevate |
+| NSPanel Pro Tools | PanelElevate |
 |-------------------|---------------|
 | light / lux sensor | `sensor.…_light` (topic `shellyelevateservice/<id>/lux`) |
 | proximity sensor | `sensor.…_proximity` (reflectance) + `binary_sensor.…_presence` (near = ON) |
@@ -235,7 +235,7 @@ device (ESC/HOME/VOLUME) is not wired on the 86 model; its key codes are only pu
 
 ## Native dashboard
 
-Instead of the HA Companion app, ShellyElevate can show your dashboard itself: a native
+Instead of the HA Companion app, PanelElevate can show your dashboard itself: a native
 (Kotlin + Jetpack Compose) Lovelace renderer in its own process (`:dashboard`). It loads the
 dashboard config live from Home Assistant and draws the cards natively in the HA default (dark)
 theme, so popups and views open instantly even on the slow SoCs of these panels, and a dashboard
@@ -260,14 +260,14 @@ front ([Native dashboard as watchdog target](#native-dashboard-as-watchdog-targe
 
 ## ESPHome Bluetooth proxy
 
-Both panels have Bluetooth LE. With `bleProxyEnabled` (default `false`) ShellyElevate speaks
+Both panels have Bluetooth LE. With `bleProxyEnabled` (default `false`) PanelElevate speaks
 the ESPHome native API on TCP port **6053** and Home Assistant's ESPHome integration adds the
 panel as a Bluetooth proxy, like an ESP32 running `bluetooth_proxy:`. It forwards
 advertisements (plant sensors, Oral-B, iBeacons, …) and lets integrations open **active GATT
 connections** through it (e.g. La Marzocco, Xiaomi plant sensor battery/history).
 
 - Plaintext API without password (no API encryption key). Device name
-  `shellyelevate-<mqttDeviceId>`, announced via mDNS (`_esphomelib._tcp`), so HA offers it under
+  `panelelevate-<mqttDeviceId>`, announced via mDNS (`_esphomelib._tcp`), so HA offers it under
   *Discovered*; adding it manually by IP and port 6053 works too.
 - Feature flags: passive scan, active connections (3 slots), remote caching, pairing, cache
   clearing, raw advertisements, scanner state. Android always scans actively (scan responses
@@ -282,24 +282,24 @@ Setup (no root needed):
 
 ```sh
 # Location permission (BLE scans return nothing without it) and location services on
-adb shell pm grant com.stretter.shellyelevateservice android.permission.ACCESS_FINE_LOCATION
-adb shell pm grant com.stretter.shellyelevateservice android.permission.ACCESS_COARSE_LOCATION
+adb shell pm grant io.github.simllll.panelelevate android.permission.ACCESS_FINE_LOCATION
+adb shell pm grant io.github.simllll.panelelevate android.permission.ACCESS_COARSE_LOCATION
 adb shell settings put secure location_mode 3
 # Bluetooth must be on
 adb shell settings get global bluetooth_on   # 1
 # Enable the proxy (or the "Bluetooth Proxy" switch in HA via MQTT, or bleProxyEnabled via the HTTP API)
-adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
-    -a com.stretter.shellyelevateservice.SET_SETTING --es key bleProxyEnabled --es value true
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+    -a io.github.simllll.panelelevate.SET_SETTING --es key bleProxyEnabled --es value true
 ```
 
 Then add the ESPHome device in HA (Settings → Devices & services, discovered
-`shellyelevate-…`, or *Add integration → ESPHome* with the panel's IP, port 6053, no
+`panelelevate-…`, or *Add integration → ESPHome* with the panel's IP, port 6053, no
 encryption key). Notes:
 
 - **NSPanel Pro (Android 8.1)**: Android 8.1 pauses *unfiltered* BLE scans while the display
   is off; the proxy passes an empty scan filter and keeps scanning with the display off
   (verified: ~400 results in 30 s while asleep). The location permission must be granted as a
-  runtime permission (`adb shell pm grant com.stretter.shellyelevateservice
+  runtime permission (`adb shell pm grant io.github.simllll.panelelevate
   android.permission.ACCESS_FINE_LOCATION`), otherwise Android rejects the scan with a
   SecurityException in logcat. The Bluetooth MAC is not readable for apps there, so the
   proxy reports only the Wi-Fi MAC (HA then uses it as the scanner's source address).
@@ -321,14 +321,14 @@ ring events (e.g. "tone heard and no intercom call within ±10 s = flat door").
   times the strongest reference bin; the notes must follow in order, each ≥ 2 blocks, ≤ 0.6 s
   apart. Cooldown 5 s. Steps, doors and voices (below 1 kHz, not tonal) do not match.
 - Log tag `DoorbellDetector` (levels and ratios of each hit).
-- Needs `adb shell pm grant com.stretter.shellyelevateservice android.permission.RECORD_AUDIO`.
+- Needs `adb shell pm grant io.github.simllll.panelelevate android.permission.RECORD_AUDIO`.
 
 Recording samples for tuning (adb only; the detector pauses while a sample is recorded):
 
 ```sh
-adb shell am broadcast -n com.stretter.shellyelevateservice/.audio.AudioSampleReceiver \
-    -a com.stretter.shellyelevateservice.RECORD_AUDIO_SAMPLE --ei seconds 60 [--es source mic]
-adb pull /sdcard/Android/data/com.stretter.shellyelevateservice/files/audio/
+adb shell am broadcast -n io.github.simllll.panelelevate/.audio.AudioSampleReceiver \
+    -a io.github.simllll.panelelevate.RECORD_AUDIO_SAMPLE --ei seconds 60 [--es source mic]
+adb pull /sdcard/Android/data/io.github.simllll.panelelevate/files/audio/
 ```
 
 ## Recommended Setup
@@ -346,7 +346,7 @@ This is the setup I use on my Shelly Wall Display XL:
    - Look for `home-assistant-android-minimal-*.apk`
    - This is the default app monitored by the watchdog
 
-3. **ShellyElevateService** - This service running in the background
+3. **PanelElevateService** - This service running in the background
 
 Alternatively skip the HA app and use the [native dashboard](#native-dashboard).
 
@@ -388,7 +388,7 @@ curl -X POST http://<device-ip>:8080/settings \
 
 #### Native dashboard as watchdog target
 
-Set `watchdogPackage` to `dashboard` (or the own package name `com.stretter.shellyelevateservice`)
+Set `watchdogPackage` to `dashboard` (or the own package name `io.github.simllll.panelelevate`)
 to keep the built-in native dashboard (see [`dashboard/README.md`](dashboard/README.md)) in front
 instead of the HA app. The watchdog then checks the `:dashboard` process and starts
 `DashboardActivity` directly; `restart_app` kills only the dashboard process (never the service)
@@ -401,19 +401,19 @@ and `watchdogInterval` are accepted):
 
 ```bash
 # switch to the native dashboard
-adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
-  -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogPackage --es value dashboard
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+  -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogPackage --es value dashboard
 
 # back to the HA Companion app
-adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
-  -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogPackage \
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+  -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogPackage \
   --es value io.homeassistant.companion.android.minimal
 
 # enable/disable, interval in seconds
-adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
-  -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogEnabled --es value true
-adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
-  -a com.stretter.shellyelevateservice.SET_SETTING --es key watchdogInterval --es value 10
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+  -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogEnabled --es value true
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+  -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogInterval --es value 10
 ```
 
 The broadcast result (`data="Set watchdogPackage = dashboard"` or `data="Rejected …"`) shows
@@ -472,7 +472,8 @@ stored as a number). Nothing is stored if any key is rejected.
 
 ## MQTT Topics
 
-All topics are prefixed with `shellyelevateservice/<client-id>/`.
+All topics are prefixed with `shellyelevateservice/<client-id>/` (kept from ShellyElevate so existing
+Home Assistant entities and automations keep working after the rename to PanelElevate).
 
 ### Availability
 | Topic | Description |
@@ -526,7 +527,7 @@ Home Assistant comes `online`.
 
 ## Home Assistant Auto-Discovery
 
-ShellyElevate publishes MQTT discovery config to `homeassistant/device/<client-id>/config`. After connecting to MQTT, the device will automatically appear in Home Assistant with:
+PanelElevate publishes MQTT discovery config to `homeassistant/device/<client-id>/config`. After connecting to MQTT, the device will automatically appear in Home Assistant with:
 
 - Temperature sensor (if available)
 - Humidity sensor (if available)

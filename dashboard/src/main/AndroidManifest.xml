@@ -29,7 +29,7 @@
             android:permission="android.permission.DUMP"
             android:process=":dashboard">
             <intent-filter>
-                <action android:name="com.stretter.shellyelevateservice.dashboard.CONFIGURE" />
+                <action android:name="io.github.simllll.panelelevate.dashboard.CONFIGURE" />
             </intent-filter>
         </receiver>
     </application>
