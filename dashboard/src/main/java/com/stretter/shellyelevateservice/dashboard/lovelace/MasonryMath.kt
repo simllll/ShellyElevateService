@@ -67,6 +67,7 @@ object MasonryMath {
         "horizontal-stack" -> config.objects("cards").maxOfOrNull { cardSize(it) } ?: 0.0
         "grid" -> gridSize(config)
         "picture", "custom:refreshable-picture-card" -> 5.0
+        "picture-entity", "picture-glance" -> 3.0
         "tile" -> 1.0 + (if (config.bool("vertical") == true) 1 else 0) + (config.array("features")?.size ?: 0)
         "button" -> ((if (config.bool("show_icon") != false) 4 else 0) + (if (config.bool("show_name") != false) 1 else 0)).toDouble()
         "heading" -> 1.0
