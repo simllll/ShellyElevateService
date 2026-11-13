@@ -199,7 +199,10 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
                     .width(width)
                     .height(3.dp)
                     .graphicsLayer {
-                        scaleX = progress.value
+                        // ~4 steps per second: every changed frame is a full redraw on these
+                        // GPUs, and a 3dp bar does not need 60 fps
+                        val steps = ((state.timeoutMs ?: 0L) / PROGRESS_STEP_MS).coerceAtLeast(1L).toFloat()
+                        scaleX = kotlin.math.floor(progress.value * steps) / steps
                         transformOrigin = TransformOrigin(0f, 0.5f)
                     }
                     .background(c.primary)
@@ -277,3 +280,5 @@ private fun PopupScope.PopupContent(content: JsonElement?) {
         else -> content.asString()?.let { Html(it, Modifier.fillMaxWidth()) } ?: Box(Modifier.fillMaxWidth())
     }
 }
+
+private const val PROGRESS_STEP_MS = 250L
