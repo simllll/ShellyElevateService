@@ -61,7 +61,8 @@ fun StateBadge(
     size: Dp = 40.dp,
 ) {
     val picture = image ?: if (icon == null) entity?.entityPicture else null
-    Box(modifier.size(size).clip(CircleShape), contentAlignment = Alignment.Center) {
+    // Only a picture needs the circular clip; a clip on every icon costs a layer per row.
+    Box(modifier.size(size).then(if (picture != null) Modifier.clip(CircleShape) else Modifier), contentAlignment = Alignment.Center) {
         if (picture != null) {
             RemoteImage(ctx.images, picture, Modifier.size(size))
         } else {

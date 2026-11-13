@@ -23,21 +23,24 @@ import com.stretter.shellyelevateservice.dashboard.icons.MdiIcon
 import com.stretter.shellyelevateservice.dashboard.theme.HaTheme
 
 /**
- * `<ha-card>`: card background, 1px divider-colored border, 12px radius, content clipped.
+ * `<ha-card>`: card background, 1px divider-colored border, 12px radius.
  * Pass `background = Color.Transparent, border = false` for `text_only`-style cards.
+ * [clip] clips the content to the rounded shape; only cards with full-bleed pictures/video/maps
+ * need it: a clipped card is an extra clipped layer, which costs GPU time on every scroll frame.
  */
 @Composable
 fun HaCard(
     modifier: Modifier = Modifier,
     background: Color = HaTheme.colors.cardBackground,
     border: Boolean = true,
+    clip: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val d = HaTheme.dimens
     val shape = RoundedCornerShape(d.radiusLg)
     Box(
         modifier
-            .clip(shape)
+            .then(if (clip) Modifier.clip(shape) else Modifier)
             .background(background, shape)
             .then(if (border) Modifier.border(d.cardBorderWidth, HaTheme.colors.divider, shape) else Modifier),
         content = content,

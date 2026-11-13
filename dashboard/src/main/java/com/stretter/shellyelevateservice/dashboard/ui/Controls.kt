@@ -66,8 +66,7 @@ fun HaSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Mod
             Modifier
                 .fillMaxWidth()
                 .height(24.dp)
-                .clip(CircleShape)
-                .background((if (checked) c.switchCheckedTrack else c.switchTrack).copy(alpha = alpha))
+                .background((if (checked) c.switchCheckedTrack else c.switchTrack).copy(alpha = alpha), CircleShape)
                 .border(1.dp, (if (checked) c.switchCheckedBorder else c.switchBorder).copy(alpha = alpha), CircleShape)
         )
         Box(
@@ -94,11 +93,10 @@ fun HaIconButton(
     Box(
         modifier
             .size(size)
-            .clip(CircleShape)
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
-                indication = remember(tint) { PressIndication(tint) },
+                indication = remember(tint) { PressIndication(tint, shape = CircleShape) },
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -125,12 +123,11 @@ fun HaButton(
     Row(
         modifier
             .height(40.dp)
-            .clip(shape)
             .then(if (filled) Modifier.background(color, shape) else Modifier)
             .then(if (outlined) Modifier.border(1.dp, HaTheme.colors.outlineHover, shape) else Modifier)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = remember(fg) { PressIndication(fg) },
+                indication = remember(fg) { PressIndication(fg, shape = shape) },
                 onClick = onClick,
             )
             .padding(contentPadding),

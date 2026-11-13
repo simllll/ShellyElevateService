@@ -128,7 +128,7 @@ class PictureCard(private val config: JsonObject) : CardRenderer {
         val imageEntity = ctx.entity(config.string("image_entity"))
         val url = imageEntity?.entityPicture ?: config.string("image")
         val interactive = ActionHandler.hasAction(config, ActionTrigger.TAP) || ActionHandler.hasAction(config, ActionTrigger.HOLD)
-        HaCard(modifier.fillMaxWidth()) {
+        HaCard(modifier.fillMaxWidth(), clip = true) {
             RemoteImage(
                 ctx.images,
                 url,

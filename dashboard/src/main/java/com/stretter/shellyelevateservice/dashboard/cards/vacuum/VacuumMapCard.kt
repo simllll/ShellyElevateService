@@ -117,7 +117,7 @@ class VacuumMapCard(private val config: JsonObject) : CardRenderer {
             return
         }
         ctx.WatchEntities(watched)
-        HaCard(modifier.fillMaxWidth()) {
+        HaCard(modifier.fillMaxWidth(), clip = true) {
             Column(Modifier.fillMaxWidth()) {
                 if (!title.isNullOrEmpty()) CardHeader(title)
                 val selection = remember { mutableStateListOf<RoomSelection>() }

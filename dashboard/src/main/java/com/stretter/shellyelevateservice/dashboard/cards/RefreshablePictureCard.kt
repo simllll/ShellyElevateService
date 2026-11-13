@@ -58,7 +58,7 @@ class RefreshablePictureCard(private val config: JsonObject) : CardRenderer {
         val d = HaTheme.dimens
         val shape = RoundedCornerShape(d.radiusLg)
         val tap = ActionHandler.hasAction(config, ActionTrigger.TAP)
-        HaCard(modifier.fillMaxWidth().then(if (tap) Modifier.haActions(ctx, config) else Modifier)) {
+        HaCard(modifier.fillMaxWidth().then(if (tap) Modifier.haActions(ctx, config) else Modifier), clip = true) {
             Column(Modifier.fillMaxWidth()) {
                 if (!title.isNullOrEmpty()) CardHeader(title)
                 RemoteImage(

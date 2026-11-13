@@ -52,6 +52,7 @@ class IframeCard(private val config: JsonObject) : CardRenderer {
             modifier.fillMaxWidth(),
             background = if (hideBackground) Color.Transparent else HaTheme.colors.cardBackground,
             border = !hideBackground,
+            clip = true,
         ) {
             Column(if (grid) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
                 if (!title.isNullOrEmpty()) CardHeader(title)
