@@ -20,6 +20,21 @@ PanelElevate started as [ShellyElevate](https://github.com/RapierXbox/ShellyElev
 that kept the Shelly Wall Display's hardware usable next to the HA Companion app, whose WebView
 was the only fast option at the time.
 
+## Screenshots
+
+The native dashboard renders the Home Assistant dashboards you already have (no extra
+configuration), here on a Shelly Wall Display XL (1280×800) and a Sonoff NSPanel Pro (480×480).
+
+![Shelly Wall Display XL: home view](docs/screenshots/shelly-xl-home.png)
+
+| | | |
+|:---:|:---:|:---:|
+| ![Home](docs/screenshots/nspanel-home.png)<br>Home with badges and auto-entities | ![Devices](docs/screenshots/nspanel-devices.png)<br>Covers and media player | ![Climate](docs/screenshots/nspanel-climate.png)<br>Mushroom climate cards |
+| ![Weather](docs/screenshots/nspanel-weather.png)<br>Weather forecast | ![Energy](docs/screenshots/nspanel-energy.png)<br>Energy per device | ![Vacuum](docs/screenshots/nspanel-vacuum.png)<br>Vacuum map with rooms |
+| ![Doorbell](docs/screenshots/nspanel-doorbell-popup.png)<br>Doorbell popup (browser_mod) | ![Guest lock](docs/screenshots/nspanel-guest-lock.png)<br>Guest lock | ![Doorbell XL](docs/screenshots/shelly-xl-doorbell-popup.png)<br>Accept/decline popup |
+
+<sub>Window view and floor plan are blurred for privacy.</sub>
+
 ## Features
 
 | Feature | Description |
@@ -63,7 +78,7 @@ Device*; NSPanel Pro: adb over network is on by default on port 5555), download 
 [releases](https://github.com/simllll/PanelElevate/releases) and run:
 
 ```bash
-scripts/setup.sh -s <panel-ip>:5555 --apk PanelElevate-1.0.0.apk \
+scripts/setup.sh -s <panel-ip>:5555 --apk PanelElevate-v1.0.0.apk \
   --mqtt-broker tcp://<ha-ip> --mqtt-user <user> --mqtt-pass <password> --device-id kitchen \
   --ha-url http://<ha-ip>:8123 --ha-token <long-lived token of the panel user> \
   --dashboard <dashboard url_path> --browser-id "walldisplay Kitchen" \
@@ -97,7 +112,7 @@ MQTT topics, setting keys and discovery ids are unchanged.
 
 ### Manual installation
 
-1. Enable adb (see above) and install the APK: `adb install PanelElevate-1.0.0.apk`
+1. Enable adb (see above) and install the APK: `adb install PanelElevate-v1.0.0.apk`
 2. Grant the permissions:
 
    ```bash
@@ -116,7 +131,7 @@ MQTT topics, setting keys and discovery ids are unchanged.
 
    ```bash
    adb shell am start -n io.github.simllll.panelelevate/.dashboard.DashboardActivity
-   adb install -r PanelElevate-1.0.0.apk
+   adb install -r PanelElevate-v1.0.0.apk
    adb shell dumpsys activity services io.github.simllll.panelelevate   # verify
    ```
 
