@@ -44,9 +44,12 @@ object AudioSampleRecorder {
         if (!busy.compareAndSet(false, true)) return false
         val dir = File(context.getExternalFilesDir(null), "audio").apply { mkdirs() }
         Thread({
+            // The doorbell listener lets go of the microphone while we record.
+            MicOwner.acquireForSampler()
             try {
                 for (name in names) record(dir, name, SOURCES.getValue(name), seconds)
             } finally {
+                MicOwner.releaseFromSampler()
                 busy.set(false)
             }
         }, "audio-sample").start()

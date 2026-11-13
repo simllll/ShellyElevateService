@@ -98,6 +98,11 @@ public class ShellyElevateMQTTCallback {
                 autoIntent.putExtra(INTENT_AUTO_BRIGHTNESS_KEY, "ON".equalsIgnoreCase(payload.trim()));
                 LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(autoIntent);
                 break;
+            case MQTT_TOPIC_DOORBELL_DETECT_COMMAND:
+                ShellyElevateApplication.mSharedPreferences.edit()
+                        .putBoolean(SP_DOORBELL_DETECT_ENABLED, "ON".equalsIgnoreCase(payload.trim())).apply();
+                LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(new Intent(INTENT_SETTINGS_CHANGED));
+                break;
             case MQTT_TOPIC_BLE_PROXY_COMMAND:
                 ShellyElevateApplication.mSharedPreferences.edit()
                         .putBoolean(SP_BLE_PROXY_ENABLED, "ON".equalsIgnoreCase(payload.trim())).apply();

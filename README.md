@@ -305,6 +305,32 @@ encryption key). Notes:
   proxy reports only the Wi-Fi MAC (HA then uses it as the scanner's source address).
 - **Wall Display XL (Android 11)**: scans keep running with the display dimmed.
 
+## Acoustic doorbell detection
+
+For door bells that ring an indoor unit only locally (no event in HA), the panel can listen
+for the ringtone with its microphone (`doorbellDetectEnabled`, default `false`, also the
+"Doorbell Detection" switch in HA). On a match it fires the MQTT event entity **Doorbell sound**
+(`event_types: [ring]`, device class `doorbell`); combine it in HA with your intercom's own
+ring events (e.g. "tone heard and no intercom call within ±10 s = flat door").
+
+- Continuous AudioRecord (source MIC, 16 kHz mono) in the service, also with the display off;
+  the microphone is released when the setting is off.
+- Goertzel filters on the three notes of the BTicino chime (1760 Hz → 2090 Hz → 1395 Hz, ±3 %)
+  and reference frequencies between them in 64 ms blocks. A note counts when it is above
+  `doorbellMinLevel` (default 100, ≈ a sine of amplitude 200) and `doorbellMinRatio` (default 8)
+  times the strongest reference bin; the notes must follow in order, each ≥ 2 blocks, ≤ 0.6 s
+  apart. Cooldown 5 s. Steps, doors and voices (below 1 kHz, not tonal) do not match.
+- Log tag `DoorbellDetector` (levels and ratios of each hit).
+- Needs `adb shell pm grant com.stretter.shellyelevateservice android.permission.RECORD_AUDIO`.
+
+Recording samples for tuning (adb only; the detector pauses while a sample is recorded):
+
+```sh
+adb shell am broadcast -n com.stretter.shellyelevateservice/.audio.AudioSampleReceiver \
+    -a com.stretter.shellyelevateservice.RECORD_AUDIO_SAMPLE --ei seconds 60 [--es source mic]
+adb pull /sdcard/Android/data/com.stretter.shellyelevateservice/files/audio/
+```
+
 ## Recommended Setup
 
 This is the setup I use on my Shelly Wall Display XL:
@@ -657,6 +683,9 @@ All settings can be configured via `POST /settings` with a JSON body.
 | `mediaEnabled` | boolean | `true` | Enable media/audio playback |
 | `debugKeys` | boolean | `false` | Publish unknown key codes to MQTT for debugging |
 | `bleProxyEnabled` | boolean | `false` | ESPHome Bluetooth proxy on port 6053 (see [ESPHome Bluetooth proxy](#esphome-bluetooth-proxy); also settable via adb and the MQTT switch) |
+| `doorbellDetectEnabled` | boolean | `false` | Acoustic doorbell detection via the microphone (see [Acoustic doorbell detection](#acoustic-doorbell-detection); also settable via adb and the MQTT switch) |
+| `doorbellMinRatio` | int | `8` | Doorbell detector: minimum ratio of a note to the strongest reference frequency |
+| `doorbellMinLevel` | int | `100` | Doorbell detector: minimum note level (Goertzel magnitude) |
 | `deviceModel` | string | not set (detect) | Force a device profile, e.g. `NSPANEL_PRO` or `BLAKE` (see [Supported devices](#supported-devices); protected, applies after a service restart) |
 
 ## Building

@@ -333,6 +333,7 @@ public class MQTTServer {
                     parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
                     parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND),
                     parseTopic(MQTT_TOPIC_BLE_PROXY_COMMAND),
+                    parseTopic(MQTT_TOPIC_DOORBELL_DETECT_COMMAND),
                     MQTT_TOPIC_HOME_ASSISTANT_STATUS
             };
         }
@@ -348,6 +349,7 @@ public class MQTTServer {
                 parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
                 parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND),
                 parseTopic(MQTT_TOPIC_BLE_PROXY_COMMAND),
+                parseTopic(MQTT_TOPIC_DOORBELL_DETECT_COMMAND),
                 MQTT_TOPIC_HOME_ASSISTANT_STATUS
         };
     }
@@ -384,6 +386,7 @@ public class MQTTServer {
         safely("brightness", () -> forcePublishScreenBrightness(mDeviceHelper.getScreenBrightness()));
         safely("auto brightness", this::publishAutoBrightness);
         safely("ble proxy", this::publishBleProxy);
+        safely("doorbell detect", this::publishDoorbellDetect);
         if (device.hasProximitySensor) {
             safely("proximity", () -> publishProximity(mDeviceSensorManager.getLastMeasuredDistance()));
         }
@@ -546,6 +549,16 @@ public class MQTTServer {
         boolean auto = mSharedPreferences.getBoolean(SP_AUTOMATIC_BRIGHTNESS, true);
         publishInternal(parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_STATE), auto ? "ON" : "OFF", 1, false);
     }
+    public void publishDoorbellDetect() {
+        boolean enabled = mSharedPreferences.getBoolean(SP_DOORBELL_DETECT_ENABLED, false);
+        publishInternal(parseTopic(MQTT_TOPIC_DOORBELL_DETECT_STATE), enabled ? "ON" : "OFF", 1, false);
+    }
+
+    /** "Doorbell sound" event entity: the doorbell chime was heard (not retained). */
+    public void publishDoorbellSound() {
+        publishInternal(parseTopic(MQTT_TOPIC_DOORBELL_SOUND), "{\"event_type\":\"ring\"}", 1, false);
+    }
+
     public void publishBleProxy() {
         boolean enabled = mSharedPreferences.getBoolean(SP_BLE_PROXY_ENABLED, false);
         publishInternal(parseTopic(MQTT_TOPIC_BLE_PROXY_STATE), enabled ? "ON" : "OFF", 1, false);
@@ -803,6 +816,25 @@ public class MQTTServer {
         bleProxyPayload.put("icon", "mdi:bluetooth");
         bleProxyPayload.put("unique_id", clientId + "_ble_proxy");
         components.put(clientId + "_ble_proxy", bleProxyPayload);
+
+        JSONObject doorbellDetectPayload = new JSONObject();
+        doorbellDetectPayload.put("p", "switch");
+        doorbellDetectPayload.put("name", "Doorbell Detection");
+        doorbellDetectPayload.put("state_topic", parseTopic(MQTT_TOPIC_DOORBELL_DETECT_STATE));
+        doorbellDetectPayload.put("command_topic", parseTopic(MQTT_TOPIC_DOORBELL_DETECT_COMMAND));
+        doorbellDetectPayload.put("entity_category", "config");
+        doorbellDetectPayload.put("icon", "mdi:ear-hearing");
+        doorbellDetectPayload.put("unique_id", clientId + "_doorbell_detect");
+        components.put(clientId + "_doorbell_detect", doorbellDetectPayload);
+
+        JSONObject doorbellSoundPayload = new JSONObject();
+        doorbellSoundPayload.put("p", "event");
+        doorbellSoundPayload.put("name", "Doorbell sound");
+        doorbellSoundPayload.put("state_topic", parseTopic(MQTT_TOPIC_DOORBELL_SOUND));
+        doorbellSoundPayload.put("event_types", new JSONArray().put("ring"));
+        doorbellSoundPayload.put("device_class", "doorbell");
+        doorbellSoundPayload.put("unique_id", clientId + "_doorbell_sound");
+        components.put(clientId + "_doorbell_sound", doorbellSoundPayload);
 
         if (DeviceModel.getReportedDevice().proximityIsReflectance()) {
             JSONObject thresholdPayload = new JSONObject();

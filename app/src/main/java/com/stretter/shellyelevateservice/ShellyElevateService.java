@@ -36,6 +36,8 @@ import com.stretter.shellyelevateservice.helper.ScreenOffTimeoutStrategy;
 import com.stretter.shellyelevateservice.helper.ScreenPowerStrategy;
 import com.stretter.shellyelevateservice.helper.ServiceHelper;
 import com.stretter.shellyelevateservice.dashboard.lock.GuestLockContract;
+import com.stretter.shellyelevateservice.audio.ChimeDetector;
+import com.stretter.shellyelevateservice.audio.DoorbellListener;
 import com.stretter.shellyelevateservice.esphome.EspHomeBluetoothProxy;
 import com.stretter.shellyelevateservice.dashboard.popup.ButtonFeedbackContract;
 import com.stretter.shellyelevateservice.mqtt.MQTTServer;
@@ -66,6 +68,8 @@ public class ShellyElevateService extends Service {
     private DeviceSensorManager sensorManager;
     private MQTTServer mqttServer;
     private EspHomeBluetoothProxy bleProxy;
+    private DoorbellListener doorbellListener;
+    private ChimeDetector.Config doorbellConfig;
     private HttpServer httpServer;
     private MediaHelper mediaHelper;
     private InputEventReader inputEventReader;
@@ -180,8 +184,33 @@ public class ShellyElevateService extends Service {
         startHttpServer();
         startAppWatchdog();
         applyBleProxySetting();
+        applyDoorbellSetting();
 
         Log.i(TAG, "ShellyElevateService started successfully");
+    }
+
+    /**
+     * Starts/stops the acoustic doorbell detector according to doorbellDetectEnabled; a changed
+     * ratio/level restarts it with the new thresholds.
+     */
+    private void applyDoorbellSetting() {
+        boolean enabled = sharedPreferences.getBoolean(SP_DOORBELL_DETECT_ENABLED, false);
+        ChimeDetector.Config config = new ChimeDetector.Config().withThresholds(
+                sharedPreferences.getInt(SP_DOORBELL_MIN_LEVEL, 100),
+                sharedPreferences.getInt(SP_DOORBELL_MIN_RATIO, 8));
+        if (doorbellListener != null && (!enabled || !config.equals(doorbellConfig))) {
+            doorbellListener.stop();
+            doorbellListener = null;
+        }
+        if (enabled && doorbellListener == null) {
+            doorbellConfig = config;
+            doorbellListener = new DoorbellListener(config, hit -> {
+                if (mqttServer != null) mqttServer.publishDoorbellSound();
+                return kotlin.Unit.INSTANCE;
+            });
+            doorbellListener.start();
+        }
+        if (mqttServer != null) mqttServer.publishDoorbellDetect();
     }
 
     /** Starts/stops the ESPHome Bluetooth proxy according to bleProxyEnabled (off thread: socket/mDNS setup). */
@@ -231,6 +260,11 @@ public class ShellyElevateService extends Service {
 
         // ESPHome Bluetooth proxy: off unless explicitly enabled
         if (!sharedPreferences.contains(SP_BLE_PROXY_ENABLED)) editor.putBoolean(SP_BLE_PROXY_ENABLED, false);
+
+        // Acoustic doorbell detection (microphone): off unless explicitly enabled
+        if (!sharedPreferences.contains(SP_DOORBELL_DETECT_ENABLED)) editor.putBoolean(SP_DOORBELL_DETECT_ENABLED, false);
+        if (!sharedPreferences.contains(SP_DOORBELL_MIN_RATIO)) editor.putInt(SP_DOORBELL_MIN_RATIO, 8);
+        if (!sharedPreferences.contains(SP_DOORBELL_MIN_LEVEL)) editor.putInt(SP_DOORBELL_MIN_LEVEL, 100);
 
         // Other
         if (!sharedPreferences.contains(SP_HTTP_SERVER_ENABLED)) editor.putBoolean(SP_HTTP_SERVER_ENABLED, true);
@@ -457,6 +491,7 @@ public class ShellyElevateService extends Service {
         @Override
         public void onReceive(Context context, Intent intent) {
             applyBleProxySetting();
+            applyDoorbellSetting();
             try {
                 scheduler.execute(watchdogCheck);
             } catch (RejectedExecutionException ignored) {
@@ -875,6 +910,7 @@ public class ShellyElevateService extends Service {
     public void onDestroy() {
         Log.i(TAG, "ShellyElevateService stopping...");
         if (bleProxy != null) bleProxy.setEnabled(false);
+        if (doorbellListener != null) doorbellListener.stop();
 
         // Unregister receivers
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
