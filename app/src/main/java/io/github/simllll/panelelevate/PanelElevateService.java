@@ -30,6 +30,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import fi.iki.elonen.NanoHTTPD;
+import io.github.simllll.panelelevate.helper.ReflectanceDetector;
 import io.github.simllll.panelelevate.helper.DeviceHelper;
 import io.github.simllll.panelelevate.helper.DeviceSensorManager;
 import io.github.simllll.panelelevate.helper.MediaHelper;
@@ -704,6 +705,8 @@ public class PanelElevateService extends Service {
     private boolean lastProximityNear = false;
     private long lastProximityPublish = 0;
 
+    private final ReflectanceDetector reflectanceDetector = new ReflectanceDetector();
+
     private void onProximityChanged(float proximity) {
         boolean wakeOnProximity = sharedPreferences.getBoolean(SP_WAKE_ON_PROXIMITY, false);
         float maxRange = sensorManager.getMaxProximitySensorValue();
@@ -712,10 +715,10 @@ public class PanelElevateService extends Service {
         // reset the idle timer and postpone dimming
         boolean near;
         if (device.proximityIsReflectance()) {
-            int threshold = DeviceModel.clampReflectanceThreshold(
+            // proximityThreshold = rise above the learned resting level (it drifts with daylight)
+            int delta = DeviceModel.clampReflectanceThreshold(
                     sharedPreferences.getInt(SP_PROXIMITY_THRESHOLD, DeviceModel.REFLECTANCE_NEAR_DEFAULT));
-            near = proximity >= threshold
-                    || (lastProximityNear && proximity > DeviceModel.reflectanceFar(threshold));
+            near = reflectanceDetector.feed(proximity, SystemClock.elapsedRealtime(), delta);
         } else {
             near = proximity < maxRange - 0.5f;
         }
