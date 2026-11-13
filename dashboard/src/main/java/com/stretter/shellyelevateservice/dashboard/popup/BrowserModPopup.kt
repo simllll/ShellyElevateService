@@ -34,6 +34,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.RectangleShape
+import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -154,10 +157,11 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(start = 4.dp),
                     )
+                    val ring = data.string("icon_animation") == "ring"
                     icons.forEach { icon ->
                         HaIconButton(icon.string("icon") ?: "mdi:help", onClick = {
                             closeThen(icon.bool("close") ?: true, icon["action"])
-                        })
+                        }, modifier = if (ring) Modifier.ringing() else Modifier)
                     }
                 }
             }
@@ -178,20 +182,62 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (leftButton != null) {
-                        HaButton(leftButton, onClick = { closeThen(data.bool("left_button_close") ?: true, data["left_button_action"]) }, outlined = false)
+                        PopupButton(data, "left", leftButton, defaultOutlined = false) {
+                            closeThen(data.bool("left_button_close") ?: true, data["left_button_action"])
+                        }
                     }
                     Spacer(Modifier.weight(1f))
                     if (rightButton != null) {
-                        HaButton(
-                            rightButton,
-                            onClick = { closeThen(data.bool("right_button_close") ?: true, data["right_button_action"]) },
-                            filled = data.string("right_button_appearance") in setOf("accent", "filled"),
-                            color = if (data.string("right_button_variant") == "danger") c.error else c.primary,
-                        )
+                        PopupButton(data, "right", rightButton, defaultOutlined = true) {
+                            closeThen(data.bool("right_button_close") ?: true, data["right_button_action"])
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * A popup button with browser_mod's `<side>_button_variant` (brand, neutral, danger, warning,
+ * success) and `<side>_button_appearance` (accent/filled, outlined, plain). `<side>_button_icon`
+ * is a native extension (the web dashboard ignores it).
+ */
+@Composable
+private fun PopupButton(data: JsonObject, side: String, text: String, defaultOutlined: Boolean, onClick: () -> Unit) {
+    val c = HaTheme.colors
+    val color = when (data.string("${side}_button_variant")) {
+        "danger" -> c.error
+        "warning" -> c.warning
+        "success" -> c.success
+        "neutral" -> c.secondaryText
+        else -> c.primary
+    }
+    val appearance = data.string("${side}_button_appearance")
+    val filled = appearance in setOf("accent", "filled")
+    HaButton(
+        text,
+        onClick = onClick,
+        icon = data.string("${side}_button_icon"),
+        filled = filled,
+        outlined = !filled && (appearance == "outlined" || (appearance == null && defaultOutlined)),
+        color = color,
+    )
+}
+
+/** Swinging bell (`icon_animation: ring`, native extension): a short shake, then a pause. */
+@Composable
+private fun Modifier.ringing(): Modifier {
+    val angle = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            for (a in listOf(18f, -16f, 14f, -12f, 9f, -6f, 3f, 0f)) angle.animateTo(a, tween(70, easing = LinearEasing))
+            delay(600)
+        }
+    }
+    return graphicsLayer {
+        rotationZ = angle.value
+        transformOrigin = TransformOrigin(0.5f, 0.15f)
     }
 }
 
