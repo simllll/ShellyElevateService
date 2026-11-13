@@ -1,5 +1,19 @@
 package com.stretter.shellyelevateservice.dashboard.cards
 
+import com.stretter.shellyelevateservice.dashboard.icons.MdiIcon
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.Alignment
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,6 +50,8 @@ import kotlin.math.roundToInt
  * Native extension: `camera_view: live` with a camera `entity` (or a `url` of the form
  * `/api/camera_proxy/camera.x`) plays the camera's WebRTC stream instead; `url` (or the
  * camera's picture) is the still shown until the first frame and when WebRTC fails.
+ * `camera_view: tap` shows the refreshing still with a "Tippen für Live" hint and switches to
+ * the live stream on this device only when tapped (live view can answer an intercom call).
  */
 class RefreshablePictureCard(private val config: JsonObject) : CardRenderer {
     private val url = config.string("url")?.takeIf { it.isNotBlank() }
@@ -46,6 +62,7 @@ class RefreshablePictureCard(private val config: JsonObject) : CardRenderer {
     private val title = config.string("title")
     private val fallback = config.string("fallback_image")?.takeIf { it.isNotBlank() }
     private val liveCamera = if (config.string("camera_view") == "live") cameraEntityOf(entityId, url) else null
+    private val tapCamera = if (config.string("camera_view") == "tap") cameraEntityOf(entityId, url) else null
 
     @Composable
     override fun Content(ctx: CardContext, modifier: Modifier) {
@@ -55,6 +72,11 @@ class RefreshablePictureCard(private val config: JsonObject) : CardRenderer {
         }
         if (liveCamera != null) {
             LiveContent(ctx, modifier, liveCamera)
+            return
+        }
+        var tappedLive by remember { mutableStateOf(false) }
+        if (tapCamera != null && tappedLive) {
+            LiveContent(ctx, modifier, tapCamera)
             return
         }
         val entity = ctx.entity(entityId)
@@ -69,9 +91,15 @@ class RefreshablePictureCard(private val config: JsonObject) : CardRenderer {
         val d = HaTheme.dimens
         val shape = RoundedCornerShape(d.radiusLg)
         val tap = ActionHandler.hasAction(config, ActionTrigger.TAP)
-        HaCard(modifier.fillMaxWidth().then(if (tap) Modifier.haActions(ctx, config) else Modifier), clip = true) {
+        val cardModifier = when {
+            tapCamera != null -> Modifier.clickable { tappedLive = true }
+            tap -> Modifier.haActions(ctx, config)
+            else -> Modifier
+        }
+        HaCard(modifier.fillMaxWidth().then(cardModifier), clip = true) {
             Column(Modifier.fillMaxWidth()) {
                 if (!title.isNullOrEmpty()) CardHeader(title)
+                Box(contentAlignment = Alignment.BottomCenter) {
                 RemoteImage(
                     ctx.images,
                     source,
@@ -84,6 +112,20 @@ class RefreshablePictureCard(private val config: JsonObject) : CardRenderer {
                     keepAspectRatio = true,
                     refreshKey = refresh.takeIf { it > 0 },
                 )
+                if (tapCamera != null) {
+                    Row(
+                        Modifier
+                            .padding(bottom = 16.dp)
+                            .background(Color(0x99000000), RoundedCornerShape(50))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MdiIcon("mdi:video", Color.White, size = 20.dp)
+                        Spacer(Modifier.width(8.dp))
+                        BasicText("Tippen für Live", style = HaTheme.typography.style(HaTheme.typography.sizeM, FontWeight.Medium, HaTheme.typography.lineHeightCondensed, color = Color.White))
+                    }
+                }
+                }
             }
         }
     }
