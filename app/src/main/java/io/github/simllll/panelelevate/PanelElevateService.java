@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -83,6 +84,8 @@ public class PanelElevateService extends Service {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private volatile long lastInteractionTime = System.currentTimeMillis();
     private volatile boolean isDimmed = false;
+    private volatile long dimmedAt = 0;
+    private static final long EXTERNAL_WAKE_GRACE_MS = 5_000;
     private volatile boolean keepAliveFlag = false;
 
     // Auto-brightness only rewrites the brightness when it moves at least this many steps
@@ -362,8 +365,7 @@ public class PanelElevateService extends Service {
             long idleTime = System.currentTimeMillis() - lastInteractionTime;
 
             // isDimmed with the display on = woken outside the service (power key, adb): dim again
-            boolean wokenExternally = isDimmed && screenPower != null && isScreenInteractive();
-            if (idleTime > delay * 1000L && (!isDimmed || wokenExternally)) {
+            if (idleTime > delay * 1000L && (!isDimmed || wokenExternally())) {
                 dimScreen();
             }
         }), 1, 1, TimeUnit.SECONDS);
@@ -590,7 +592,7 @@ public class PanelElevateService extends Service {
 
     private void dimScreen() {
         Log.i(TAG, "dimScreen() called, isDimmed=" + isDimmed);
-        if (isDimmed && screenPower != null && isScreenInteractive()) {
+        if (wokenExternally()) {
             // Woken outside the service (power key, adb, another app): dim again
             Log.i(TAG, "Marked dimmed but the display is on, dimming again");
             isDimmed = false;
@@ -600,6 +602,7 @@ public class PanelElevateService extends Service {
             return;
         }
         isDimmed = true;
+        dimmedAt = SystemClock.elapsedRealtime();
 
         int minBrightness = sharedPreferences.getInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness);
         if (minBrightness <= 0 && screenPower != null && screenPower.isUsable()) {
@@ -614,14 +617,22 @@ public class PanelElevateService extends Service {
             mainHandler.post(() -> deviceHelper.setScreenBrightness(minBrightness));
         }
 
-        // Publish state via MQTT (also remembered for re-publishing after a reconnect)
+        // Publish state via MQTT (also remembered for re-publishing after a reconnect).
+        // No INTENT_SCREEN_SAVER_STARTED broadcast here: that is the sleep *request* this service
+        // listens to itself, so it fed back into dimScreen().
         if (mqttServer != null) {
             mqttServer.publishSleeping(true);
         }
+    }
 
-        // Broadcast for any listeners
-        LocalBroadcastManager.getInstance(this)
-                .sendBroadcast(new Intent(INTENT_SCREEN_SAVER_STARTED));
+    /**
+     * Marked dimmed although the display is on: woken by the power key, adb or another app. Only
+     * after a grace period, because the screen-off-timeout strategy keeps the display on for about
+     * a second after dimming.
+     */
+    private boolean wokenExternally() {
+        return isDimmed && screenPower != null && isScreenInteractive()
+                && SystemClock.elapsedRealtime() - dimmedAt > EXTERNAL_WAKE_GRACE_MS;
     }
 
     private void wakeScreen() {
