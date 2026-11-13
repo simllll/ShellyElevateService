@@ -134,12 +134,6 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
                 .clip(shape)
                 .background(c.cardBackground)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                .drawWithContent {
-                    drawContent()
-                    if (state.timeoutMs != null && !hideProgress) {
-                        drawRect(c.primary, size = Size(size.width * progress.value, 3.dp.toPx()))
-                    }
-                }
         ) {
             val title = data.string("title")
             val icons = headerIcons(data)
@@ -195,6 +189,21 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
                     }
                 }
             }
+        }
+        if (state.timeoutMs != null && !hideProgress) {
+            // Own layer, only scaled per frame: drawing it inside the popup redrew the whole
+            // popup at 60 fps (~110 % CPU on the NSPanel).
+            Box(
+                Modifier
+                    .padding(top = top)
+                    .width(width)
+                    .height(3.dp)
+                    .graphicsLayer {
+                        scaleX = progress.value
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    }
+                    .background(c.primary)
+            )
         }
     }
 }
