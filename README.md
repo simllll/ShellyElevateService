@@ -172,11 +172,12 @@ had (`WRITE_SETTINGS`, `WAKE_LOCK`):
 - Light and proximity come from the Android sensors (their raw input nodes are not readable).
   The proximity sensor reports raw infrared **reflectance**, not a distance (higher = closer:
   ~20 at rest, 55–80 with a person standing in front of the panel, 100–6000 with a hand close to
-  it; Android's `maxRange` of 9 is meaningless). *Near* is ≥ `proximityThreshold` (default 40, 25–500;
-  also the *Proximity Threshold* number entity in HA) and *far* ≤ ¾ of it (hysteresis), which
-  drives `presence` and `wakeOnProximity`. Watch the proximity sensor while standing in front of
-  the panel to pick a value above the resting level (it may be higher in daylight). It only reacts to someone directly in front of the
-  panel, not across a room. Its value is published at most every 5 s plus on every near/far change (the
+  it; Android's `maxRange` of 9 is meaningless). The resting level drifts with ambient light
+  (~20 at night, 30–40 in daylight), so the panel learns it continuously (slowly upwards, quickly
+  downwards, frozen while something is near). *Near* is a rise of at least `proximityThreshold`
+  above that level (default 20, 5–500; also the *Proximity Threshold* number entity in HA) and
+  *far* a drop back below half of it (hysteresis); this drives `presence` and `wakeOnProximity`.
+  It only reacts to someone directly in front of the panel, not across a room. Its value is published at most every 5 s plus on every near/far change (the
   sensor itself reports several values per second), without a unit.
 - **Relays**: relay 1 and 2 are GPIO 114 and 115 (`/sys/class/gpio/gpio11x/value`, writable by
   apps; the same nodes NSPanel Pro Tools drives). GPIO 113 is never touched.

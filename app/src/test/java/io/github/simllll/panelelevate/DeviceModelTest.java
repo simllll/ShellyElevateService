@@ -88,8 +88,7 @@ public class DeviceModelTest {
 
     @Test
     public void reflectanceThresholds() {
-        assertEquals(40, DeviceModel.REFLECTANCE_NEAR_DEFAULT);
-        assertEquals(30f, DeviceModel.reflectanceFar(40), 0.001f);
+        assertEquals(20, DeviceModel.REFLECTANCE_NEAR_DEFAULT);
         assertEquals(DeviceModel.REFLECTANCE_NEAR_MIN, DeviceModel.clampReflectanceThreshold(0));
         assertEquals(DeviceModel.REFLECTANCE_NEAR_MAX, DeviceModel.clampReflectanceThreshold(100000));
         assertEquals(60, DeviceModel.clampReflectanceThreshold(60));

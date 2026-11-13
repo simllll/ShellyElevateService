@@ -118,20 +118,15 @@ public enum DeviceModel {
     }
 
     /**
-     * Default near threshold for reflectance proximity sensors (setting proximityThreshold);
-     * far is {@link #reflectanceFar(int)} (hysteresis).
+     * Default rise above the learned resting level that counts as near for reflectance proximity
+     * sensors (setting proximityThreshold, see helper.ReflectanceDetector).
      */
-    public static final int REFLECTANCE_NEAR_DEFAULT = 40;
-    public static final int REFLECTANCE_NEAR_MIN = 25;
+    public static final int REFLECTANCE_NEAR_DEFAULT = 20;
+    public static final int REFLECTANCE_NEAR_MIN = 5;
     public static final int REFLECTANCE_NEAR_MAX = 500;
 
     public static int clampReflectanceThreshold(int value) {
         return Math.max(REFLECTANCE_NEAR_MIN, Math.min(REFLECTANCE_NEAR_MAX, value));
-    }
-
-    /** Far threshold for a near threshold: 3/4 of it. */
-    public static float reflectanceFar(int near) {
-        return near * 0.75f;
     }
 
     /**

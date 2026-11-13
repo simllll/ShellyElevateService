@@ -1,5 +1,7 @@
 package io.github.simllll.panelelevate.dashboard.popup
 
+import io.github.simllll.panelelevate.dashboard.cards.RenderCard
+import io.github.simllll.panelelevate.dashboard.cards.CardLayout
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
@@ -58,8 +60,24 @@ internal fun PopupScope.MoreInfoDialog(entityId: String) {
         StateHeader(entity)
         Spacer(Modifier.height(24.dp))
         Controls(entity)
+        if (entity.domain !in NO_HISTORY_DOMAINS) History(entity)
     }
 }
+
+/** "Verlauf" like `ha-more-info-history`: the last 24 h as a history graph (timeline or line chart). */
+@Composable
+private fun PopupScope.History(entity: EntityState) {
+    val t = HaTheme.typography
+    val config = remember(entity.entityId) {
+        jsonOf("type" to "history-graph", "hours_to_show" to 24, "entities" to listOf(entity.entityId), "show_names" to false)
+    }
+    Spacer(Modifier.height(24.dp))
+    BasicText("Verlauf", style = t.style(t.sizeL, FontWeight.Medium, t.lineHeightCondensed, color = HaTheme.colors.primaryText))
+    Spacer(Modifier.height(8.dp))
+    ctx.withLayout(CardLayout.STACK).RenderCard(config, Modifier.fillMaxWidth())
+}
+
+private val NO_HISTORY_DOMAINS = setOf("scene", "script", "button", "input_button", "event")
 
 @Composable
 private fun PopupScope.StateHeader(entity: EntityState) {
