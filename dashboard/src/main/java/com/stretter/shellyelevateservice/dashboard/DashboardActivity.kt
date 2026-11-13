@@ -63,12 +63,14 @@ class DashboardActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         DashboardRuntime.get(this).browserMod.setVisible(true)
+        DashboardRuntime.get(this).hass.setEntitySubscriptionsPaused(false)
         DashboardRuntime.get(this).buttonFeedback.register(this)
     }
 
     override fun onStop() {
         super.onStop()
         DashboardRuntime.get(this).browserMod.setVisible(false)
+        DashboardRuntime.get(this).hass.setEntitySubscriptionsPaused(true)
         DashboardRuntime.get(this).buttonFeedback.unregister(this)
     }
 

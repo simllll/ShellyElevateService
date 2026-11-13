@@ -392,7 +392,38 @@ class HassClient(
         }
     }
 
+    /**
+     * Pauses all `subscribe_entities` subscriptions while nothing is shown (activity stopped,
+     * display off): HA keeps sending every state change otherwise, and auto-entities style
+     * watchers subscribe to all entities. The connection, browser_mod and other subscriptions
+     * stay. Resuming resubscribes; HA then sends the current states again.
+     */
+    fun setEntitySubscriptionsPaused(paused: Boolean) {
+        scope.launch(proto) {
+            if (entitiesPaused == paused) return@launch
+            entitiesPaused = paused
+            if (paused) {
+                reconcileJob?.cancel()
+                for (key in entitySubs.keys.toList()) unsubscribeEntitySub(key)
+            } else {
+                reconcileEntitySubscriptions()
+            }
+        }
+    }
+
+    private var entitiesPaused = false
+
+    private fun unsubscribeEntitySub(key: Int) {
+        val sub = entitySubs.remove(key) ?: return
+        subscriptions.remove(sub)
+        sub.id?.let { id ->
+            subscriptionsById.remove(id)
+            sendRaw(jsonOf("type" to "unsubscribe_events", "subscription" to id))
+        }
+    }
+
     private fun reconcileEntitySubscriptions() {
+        if (entitiesPaused) return
         val current = entitySubs.map { (key, sub) ->
             EntitySubscriptionPlanner.Sub(key, sub.message["entity_ids"].asArray()?.mapNotNull { it.asString() }?.toSet())
         }
@@ -407,14 +438,7 @@ class HassClient(
                 subscriptions += sub
                 if (authenticated) sendSubscribe(sub)
             }
-            is EntitySubscriptionPlanner.Step.Unsubscribe -> {
-                val sub = entitySubs.remove(step.key) ?: continue
-                subscriptions.remove(sub)
-                sub.id?.let { id ->
-                    subscriptionsById.remove(id)
-                    sendRaw(jsonOf("type" to "unsubscribe_events", "subscription" to id))
-                }
-            }
+            is EntitySubscriptionPlanner.Step.Unsubscribe -> unsubscribeEntitySub(step.key)
         }
     }
 

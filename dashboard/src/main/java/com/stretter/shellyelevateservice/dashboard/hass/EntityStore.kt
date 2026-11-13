@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transform
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import java.util.concurrent.ConcurrentHashMap
@@ -42,7 +44,11 @@ class EntityStore {
     fun snapshot(): Map<String, EntityState> = HashMap(states)
 
     /** Emits a snapshot after every applied event. Only for cards that really need all states. */
-    val all: Flow<Map<String, EntityState>> get() = revision.map { snapshot() }
+    /**
+     * All states, at most every [ALL_THROTTLE_MS] (an unfiltered subscription delivers several
+     * changes per second; rebuilding the map for each of them only feeds the garbage collector).
+     */
+    val all: Flow<Map<String, EntityState>> get() = revision.transform { emit(it); delay(ALL_THROTTLE_MS) }.map { snapshot() }
 
     /** Applies one compressed `subscribe_entities` event. */
     fun applyEvent(event: JsonObject) {
@@ -75,6 +81,7 @@ class EntityStore {
     }
 
     companion object {
+        private const val ALL_THROTTLE_MS = 500L
         fun decodeFull(entityId: String, c: JsonObject): EntityState {
             val lastChanged = c["lc"].toMillis() ?: 0L
             return EntityState(
