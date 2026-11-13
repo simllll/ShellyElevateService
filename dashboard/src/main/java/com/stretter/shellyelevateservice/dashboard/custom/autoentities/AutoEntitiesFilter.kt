@@ -39,6 +39,11 @@ class FilterEnv(
 ) {
     val missingRegistry = LinkedHashSet<String>()
 
+    // Translating/formatting a state is the expensive part of a `state:` rule over all states
+    private val formatted = HashMap<String, String>()
+
+    fun formattedState(state: EntityState): String = formatted.getOrPut(state.entityId) { formatState(state) }
+
     fun registryEntry(entityId: String): RegistryEntry? {
         if (entityId !in registry) {
             missingRegistry += entityId
@@ -136,6 +141,8 @@ class EntityFilter private constructor(private val rules: List<Rule>) {
     private abstract class Rule {
         open val usesRegistry = false
         open val usesLabels = false
+        /** Evaluation order (all rules must match): cheap rules first, so most states fail early. */
+        open val cost = 0
         abstract fun test(state: EntityState, env: FilterEnv): Boolean
     }
 
@@ -146,11 +153,13 @@ class EntityFilter private constructor(private val rules: List<Rule>) {
 
     private class StateRule(pattern: JsonElement) : Rule() {
         private val m = ValueMatcher(pattern)
+        override val cost = 2
         override fun test(state: EntityState, env: FilterEnv) =
-            m.matches(state.state, env.nowMs) || m.matches(env.formatState(state), env.nowMs)
+            m.matches(state.state, env.nowMs) || m.matches(env.formattedState(state), env.nowMs)
     }
 
     private class Attributes(spec: JsonObject) : Rule() {
+        override val cost = 1
         private val checks = spec.map { (key, pattern) ->
             key.trim().split(" ")[0].split(":") to ValueMatcher(pattern)
         }
@@ -163,17 +172,20 @@ class EntityFilter private constructor(private val rules: List<Rule>) {
     }
 
     private class Group(private val groupId: String?) : Rule() {
+        override val cost = 1
         override fun test(state: EntityState, env: FilterEnv) =
             env.states[groupId]?.attr("entity_id").asArray()?.any { it.asString() == state.entityId } == true
     }
 
     private class Not(private val filter: EntityFilter) : Rule() {
+        override val cost = 3
         override val usesRegistry get() = filter.usesRegistry
         override val usesLabels get() = filter.usesLabels
         override fun test(state: EntityState, env: FilterEnv) = !filter.matches(state.entityId, env)
     }
 
     private class Combined(private val filters: List<EntityFilter>, private val all: Boolean) : Rule() {
+        override val cost = 3
         override val usesRegistry get() = filters.any { it.usesRegistry }
         override val usesLabels get() = filters.any { it.usesLabels }
         override fun test(state: EntityState, env: FilterEnv) =
@@ -183,6 +195,7 @@ class EntityFilter private constructor(private val rules: List<Rule>) {
     private class RegistryRule(pattern: JsonElement, private val value: (RegistryEntry, ValueMatcher, FilterEnv) -> Boolean) : Rule() {
         private val m = ValueMatcher(pattern)
         override val usesRegistry = true
+        override val cost = 4
         override fun test(state: EntityState, env: FilterEnv): Boolean {
             val entry = env.registryEntry(state.entityId) ?: return false
             return value(entry, m, env)
@@ -241,7 +254,7 @@ class EntityFilter private constructor(private val rules: List<Rule>) {
                 }
             }
             // Registry rules last: `every` short-circuits, so fewer registry lookups are needed.
-            return EntityFilter(rules.sortedBy { it.usesRegistry })
+            return EntityFilter(rules.sortedBy { it.cost })
         }
 
         /** Time rules without a unit compare minutes (`"< 5"` → `"< 5 m ago"`). */
