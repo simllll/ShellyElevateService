@@ -36,6 +36,7 @@ import com.stretter.shellyelevateservice.helper.ScreenOffTimeoutStrategy;
 import com.stretter.shellyelevateservice.helper.ScreenPowerStrategy;
 import com.stretter.shellyelevateservice.helper.ServiceHelper;
 import com.stretter.shellyelevateservice.dashboard.lock.GuestLockContract;
+import com.stretter.shellyelevateservice.esphome.EspHomeBluetoothProxy;
 import com.stretter.shellyelevateservice.dashboard.popup.ButtonFeedbackContract;
 import com.stretter.shellyelevateservice.mqtt.MQTTServer;
 
@@ -64,6 +65,7 @@ public class ShellyElevateService extends Service {
     private DeviceHelper deviceHelper;
     private DeviceSensorManager sensorManager;
     private MQTTServer mqttServer;
+    private EspHomeBluetoothProxy bleProxy;
     private HttpServer httpServer;
     private MediaHelper mediaHelper;
     private InputEventReader inputEventReader;
@@ -177,8 +179,25 @@ public class ShellyElevateService extends Service {
         startIdleChecker();
         startHttpServer();
         startAppWatchdog();
+        applyBleProxySetting();
 
         Log.i(TAG, "ShellyElevateService started successfully");
+    }
+
+    /** Starts/stops the ESPHome Bluetooth proxy according to bleProxyEnabled (off thread: socket/mDNS setup). */
+    private void applyBleProxySetting() {
+        boolean enabled = sharedPreferences.getBoolean(SP_BLE_PROXY_ENABLED, false);
+        if (bleProxy == null) {
+            if (!enabled) return;
+            bleProxy = new EspHomeBluetoothProxy(this,
+                    () -> sharedPreferences.getString(SP_MQTT_CLIENTID, "shellyelevate"));
+        }
+        try {
+            scheduler.execute(() -> bleProxy.setEnabled(enabled));
+        } catch (RejectedExecutionException ignored) {
+            // service is shutting down
+        }
+        if (mqttServer != null) mqttServer.publishBleProxy();
     }
 
     private void initializeDefaultSettings() {
@@ -209,6 +228,9 @@ public class ShellyElevateService extends Service {
         if (!sharedPreferences.contains(SP_WATCHDOG_ENABLED)) editor.putBoolean(SP_WATCHDOG_ENABLED, false);
         if (!sharedPreferences.contains(SP_WATCHDOG_PACKAGE)) editor.putString(SP_WATCHDOG_PACKAGE, "io.homeassistant.companion.android.minimal");
         if (!sharedPreferences.contains(SP_WATCHDOG_INTERVAL)) editor.putInt(SP_WATCHDOG_INTERVAL, 10);
+
+        // ESPHome Bluetooth proxy: off unless explicitly enabled
+        if (!sharedPreferences.contains(SP_BLE_PROXY_ENABLED)) editor.putBoolean(SP_BLE_PROXY_ENABLED, false);
 
         // Other
         if (!sharedPreferences.contains(SP_HTTP_SERVER_ENABLED)) editor.putBoolean(SP_HTTP_SERVER_ENABLED, true);
@@ -432,6 +454,7 @@ public class ShellyElevateService extends Service {
     private final BroadcastReceiver watchdogSettingsReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            applyBleProxySetting();
             try {
                 scheduler.execute(watchdogCheck);
             } catch (RejectedExecutionException ignored) {
@@ -844,6 +867,7 @@ public class ShellyElevateService extends Service {
     @Override
     public void onDestroy() {
         Log.i(TAG, "ShellyElevateService stopping...");
+        if (bleProxy != null) bleProxy.setEnabled(false);
 
         // Unregister receivers
         LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);

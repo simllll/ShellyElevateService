@@ -26,6 +26,7 @@ public class Constants {
     public static final String SP_SCREEN_SAVER_ENABLED = "screenSaver";
     public static final String SP_SCREEN_SAVER_DELAY = "screenSaverDelay";
     public static final String SP_WAKE_ON_PROXIMITY = "wakeOnProximity";
+    public static final String SP_BLE_PROXY_ENABLED = "bleProxyEnabled";
     /** Near threshold of a reflectance proximity sensor (NSPanel Pro); far is 3/4 of it. */
     public static final String SP_PROXIMITY_THRESHOLD = "proximityThreshold";
     public static final String SP_SCREEN_SAVER_MIN_BRIGHTNESS = "screenSaverMinBrightness";
@@ -78,6 +79,8 @@ public class Constants {
     public static final String MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND = "shellyelevateservice/%s/bri_set";
     public static final String MQTT_TOPIC_AUTO_BRIGHTNESS_STATE = "shellyelevateservice/%s/auto_bri";
     public static final String MQTT_TOPIC_PROXIMITY_THRESHOLD = "shellyelevateservice/%s/proximity_threshold";
+    public static final String MQTT_TOPIC_BLE_PROXY_STATE = "shellyelevateservice/%s/ble_proxy";
+    public static final String MQTT_TOPIC_BLE_PROXY_COMMAND = "shellyelevateservice/%s/ble_proxy_set";
     public static final String MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND = "shellyelevateservice/%s/proximity_threshold_set";
     public static final String MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND = "shellyelevateservice/%s/auto_bri_set";
     public static final String MQTT_TOPIC_PROXIMITY_SENSOR = "shellyelevateservice/%s/proximity";

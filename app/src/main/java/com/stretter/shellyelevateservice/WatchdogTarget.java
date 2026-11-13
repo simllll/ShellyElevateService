@@ -1,5 +1,6 @@
 package com.stretter.shellyelevateservice;
 
+import static com.stretter.shellyelevateservice.Constants.SP_BLE_PROXY_ENABLED;
 import static com.stretter.shellyelevateservice.Constants.SP_WATCHDOG_ENABLED;
 import static com.stretter.shellyelevateservice.Constants.SP_WATCHDOG_INTERVAL;
 import static com.stretter.shellyelevateservice.Constants.SP_WATCHDOG_PACKAGE;
@@ -59,7 +60,7 @@ public final class WatchdogTarget {
     /** Settings the DUMP-protected adb receiver may change. */
     public static boolean isAdbSettableKey(String key) {
         return SP_WATCHDOG_PACKAGE.equals(key) || SP_WATCHDOG_ENABLED.equals(key)
-                || SP_WATCHDOG_INTERVAL.equals(key);
+                || SP_WATCHDOG_INTERVAL.equals(key) || SP_BLE_PROXY_ENABLED.equals(key);
     }
 
     /**
@@ -81,6 +82,7 @@ public final class WatchdogTarget {
                 if (v.isEmpty()) throw new IllegalArgumentException("package must not be empty");
                 return v;
             case SP_WATCHDOG_ENABLED:
+            case SP_BLE_PROXY_ENABLED:
                 if (v.equalsIgnoreCase("true") || v.equals("1") || v.equalsIgnoreCase("on")) return true;
                 if (v.equalsIgnoreCase("false") || v.equals("0") || v.equalsIgnoreCase("off")) return false;
                 throw new IllegalArgumentException("expected true or false");

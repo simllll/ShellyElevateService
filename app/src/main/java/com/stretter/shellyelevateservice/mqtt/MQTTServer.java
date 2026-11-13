@@ -332,6 +332,7 @@ public class MQTTServer {
                     parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND),
                     parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
                     parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND),
+                    parseTopic(MQTT_TOPIC_BLE_PROXY_COMMAND),
                     MQTT_TOPIC_HOME_ASSISTANT_STATUS
             };
         }
@@ -346,6 +347,7 @@ public class MQTTServer {
                 parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND),
                 parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
                 parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND),
+                parseTopic(MQTT_TOPIC_BLE_PROXY_COMMAND),
                 MQTT_TOPIC_HOME_ASSISTANT_STATUS
         };
     }
@@ -381,6 +383,7 @@ public class MQTTServer {
         if (device.hasLightSensor) safely("lux", () -> publishLux(mDeviceSensorManager.getLastMeasuredLux()));
         safely("brightness", () -> forcePublishScreenBrightness(mDeviceHelper.getScreenBrightness()));
         safely("auto brightness", this::publishAutoBrightness);
+        safely("ble proxy", this::publishBleProxy);
         if (device.hasProximitySensor) {
             safely("proximity", () -> publishProximity(mDeviceSensorManager.getLastMeasuredDistance()));
         }
@@ -543,6 +546,11 @@ public class MQTTServer {
         boolean auto = mSharedPreferences.getBoolean(SP_AUTOMATIC_BRIGHTNESS, true);
         publishInternal(parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_STATE), auto ? "ON" : "OFF", 1, false);
     }
+    public void publishBleProxy() {
+        boolean enabled = mSharedPreferences.getBoolean(SP_BLE_PROXY_ENABLED, false);
+        publishInternal(parseTopic(MQTT_TOPIC_BLE_PROXY_STATE), enabled ? "ON" : "OFF", 1, false);
+    }
+
     public void publishProximityThreshold() {
         int threshold = DeviceModel.clampReflectanceThreshold(
                 mSharedPreferences.getInt(SP_PROXIMITY_THRESHOLD, DeviceModel.REFLECTANCE_NEAR_DEFAULT));
@@ -785,6 +793,16 @@ public class MQTTServer {
         autoBrightnessPayload.put("icon", "mdi:brightness-auto");
         autoBrightnessPayload.put("unique_id", clientId + "_auto_brightness");
         components.put(clientId + "_auto_brightness", autoBrightnessPayload);
+
+        JSONObject bleProxyPayload = new JSONObject();
+        bleProxyPayload.put("p", "switch");
+        bleProxyPayload.put("name", "Bluetooth Proxy");
+        bleProxyPayload.put("state_topic", parseTopic(MQTT_TOPIC_BLE_PROXY_STATE));
+        bleProxyPayload.put("command_topic", parseTopic(MQTT_TOPIC_BLE_PROXY_COMMAND));
+        bleProxyPayload.put("entity_category", "config");
+        bleProxyPayload.put("icon", "mdi:bluetooth");
+        bleProxyPayload.put("unique_id", clientId + "_ble_proxy");
+        components.put(clientId + "_ble_proxy", bleProxyPayload);
 
         if (DeviceModel.getReportedDevice().proximityIsReflectance()) {
             JSONObject thresholdPayload = new JSONObject();

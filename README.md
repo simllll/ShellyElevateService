@@ -34,6 +34,7 @@ However, switching to a third-party app means you lose access to the great hardw
 | **HTTP API** | RESTful API for configuration and control, optional bearer token |
 | **Presence** | Wide-range presence sensor (XL) or proximity (NSPanel Pro) as occupancy binary sensor, optional wake on approach |
 | **Native dashboard** | Built-in Lovelace renderer (Kotlin/Compose, no WebView) with browser_mod emulation, see [`dashboard/README.md`](dashboard/README.md) |
+| **Bluetooth proxy** | Optional ESPHome-compatible Bluetooth proxy (passive scanning and active GATT connections) for Home Assistant, see [ESPHome Bluetooth proxy](#esphome-bluetooth-proxy) |
 
 ## Supported devices
 
@@ -256,6 +257,50 @@ change in HA shows up without touching the device.
 Setup, the full list of supported cards and the limitations are in
 [`dashboard/README.md`](dashboard/README.md). Use `watchdogPackage` `dashboard` to keep it in
 front ([Native dashboard as watchdog target](#native-dashboard-as-watchdog-target)).
+
+## ESPHome Bluetooth proxy
+
+Both panels have Bluetooth LE. With `bleProxyEnabled` (default `false`) ShellyElevate speaks
+the ESPHome native API on TCP port **6053** and Home Assistant's ESPHome integration adds the
+panel as a Bluetooth proxy, like an ESP32 running `bluetooth_proxy:`. It forwards
+advertisements (plant sensors, Oral-B, iBeacons, …) and lets integrations open **active GATT
+connections** through it (e.g. La Marzocco, Xiaomi plant sensor battery/history).
+
+- Plaintext API without password (no API encryption key). Device name
+  `shellyelevate-<mqttDeviceId>`, announced via mDNS (`_esphomelib._tcp`), so HA offers it under
+  *Discovered*; adding it manually by IP and port 6053 works too.
+- Feature flags: passive scan, active connections (3 slots), remote caching, pairing, cache
+  clearing, raw advertisements, scanner state. Android always scans actively (scan responses
+  are requested); `BluetoothScannerSetMode` is answered with the current (active) mode.
+- GATT handles are the real ATT handles, so HA's service cache stays valid across connections.
+- No entities: the proxy only shows up as a Bluetooth scanner/proxy in HA.
+- Wi-Fi impact measured with continuous low-latency scanning: ping to the HA host rose from
+  2.6 to 2.9 ms on average on the Wall Display XL (9.2 → 10.3 ms on the NSPanel Pro), no extra
+  packet loss.
+
+Setup (no root needed):
+
+```sh
+# Location permission (BLE scans return nothing without it) and location services on
+adb shell pm grant com.stretter.shellyelevateservice android.permission.ACCESS_FINE_LOCATION
+adb shell pm grant com.stretter.shellyelevateservice android.permission.ACCESS_COARSE_LOCATION
+adb shell settings put secure location_mode 3
+# Bluetooth must be on
+adb shell settings get global bluetooth_on   # 1
+# Enable the proxy (or the "Bluetooth Proxy" switch in HA via MQTT, or bleProxyEnabled via the HTTP API)
+adb shell am broadcast -n com.stretter.shellyelevateservice/.AdbSettingReceiver \
+    -a com.stretter.shellyelevateservice.SET_SETTING --es key bleProxyEnabled --es value true
+```
+
+Then add the ESPHome device in HA (Settings → Devices & services, discovered
+`shellyelevate-…`, or *Add integration → ESPHome* with the panel's IP, port 6053, no
+encryption key). Notes:
+
+- **NSPanel Pro (Android 8.1)**: Android pauses BLE scans while the display is off; the
+  proxy is only fully useful while the panel is awake (connections keep running). The
+  Bluetooth MAC is not readable for apps there, so the proxy reports only the Wi-Fi MAC (HA
+  then uses it as the scanner's source address).
+- **Wall Display XL (Android 11)**: scans keep running with the display dimmed.
 
 ## Recommended Setup
 
@@ -608,6 +653,7 @@ All settings can be configured via `POST /settings` with a JSON body.
 | `httpApiToken` | string | `""` | Bearer token for the HTTP API (set via adb, see Installation step 5; masked in `GET /settings`) |
 | `mediaEnabled` | boolean | `true` | Enable media/audio playback |
 | `debugKeys` | boolean | `false` | Publish unknown key codes to MQTT for debugging |
+| `bleProxyEnabled` | boolean | `false` | ESPHome Bluetooth proxy on port 6053 (see [ESPHome Bluetooth proxy](#esphome-bluetooth-proxy); also settable via adb and the MQTT switch) |
 | `deviceModel` | string | not set (detect) | Force a device profile, e.g. `NSPANEL_PRO` or `BLAKE` (see [Supported devices](#supported-devices); protected, applies after a service restart) |
 
 ## Building

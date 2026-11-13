@@ -16,7 +16,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Changes a whitelisted watchdog setting (watchdogPackage, watchdogEnabled, watchdogInterval)
+ * Changes a whitelisted setting (watchdogPackage, watchdogEnabled, watchdogInterval, bleProxyEnabled)
  * without the HTTP API token. Only reachable via adb: the manifest protects this receiver with
  * android.permission.DUMP, which the adb shell holds but normal apps cannot get.
  *

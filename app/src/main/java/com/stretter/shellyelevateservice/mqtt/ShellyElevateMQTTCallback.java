@@ -98,6 +98,12 @@ public class ShellyElevateMQTTCallback {
                 autoIntent.putExtra(INTENT_AUTO_BRIGHTNESS_KEY, "ON".equalsIgnoreCase(payload.trim()));
                 LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(autoIntent);
                 break;
+            case MQTT_TOPIC_BLE_PROXY_COMMAND:
+                ShellyElevateApplication.mSharedPreferences.edit()
+                        .putBoolean(SP_BLE_PROXY_ENABLED, "ON".equalsIgnoreCase(payload.trim())).apply();
+                // The service starts/stops the proxy and publishes the new state
+                LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(new Intent(INTENT_SETTINGS_CHANGED));
+                break;
             case MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND:
                 try {
                     int threshold = DeviceModel.clampReflectanceThreshold(
