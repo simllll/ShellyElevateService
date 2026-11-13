@@ -116,7 +116,8 @@ class DashboardRuntime private constructor(context: Context) {
         }
     }
 
-    private fun applySettings() {
+    /** Applies the stored settings; also called directly by [DashboardConfigReceiver]. */
+    fun applySettings() {
         val config = settings.hassConfig
         if (config == null) _lovelace.value = LovelaceState.NotConfigured
         hass.configure(config)
