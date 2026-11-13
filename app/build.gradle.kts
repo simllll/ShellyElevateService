@@ -19,6 +19,10 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        // Only ARM devices (NSPanel Pro, Shelly Wall Displays); keeps libwebrtc's x86 builds out of the APK.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     // Release signing comes from the environment (GitHub Actions secrets). Without it, the
@@ -57,6 +61,10 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        // Compress native libraries (libwebrtc: 18 MB uncompressed); they are extracted on install.
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
     buildFeatures {

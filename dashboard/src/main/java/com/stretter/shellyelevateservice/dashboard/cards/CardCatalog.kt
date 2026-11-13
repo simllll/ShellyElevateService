@@ -21,6 +21,8 @@ object CardCatalog {
         registry.register("button") { ButtonCard(it) }
         registry.register("markdown") { MarkdownCard(it) }
         registry.register("picture") { PictureCard(it) }
+        registry.register("picture-entity") { PictureEntityCard(it) }
+        registry.register("picture-glance") { PictureGlanceCard(it) }
         registry.register("vertical-stack") { VerticalStackCard(it) }
         registry.register("horizontal-stack") { HorizontalStackCard(it) }
         registry.register("grid") { GridCard(it) }

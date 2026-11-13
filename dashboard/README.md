@@ -51,7 +51,7 @@ dashboard then sees exactly what that user sees, and automations that map users 
 | Kind | Types |
 |---|---|
 | Layout | `sections` and `masonry` views (`panel`/`sidebar` views show a "not supported" message), view badges (entity, `custom:mushroom-template-badge`), `grid`, `horizontal-stack`, `vertical-stack` |
-| Core cards | `alarm-panel`, `button`, `energy-date-selection`, `energy-devices-detail-graph`, `entities`, `entity`, `heading`, `history-graph`, `iframe` (video URLs only), `markdown`, `picture`, `tile`, `weather-forecast` |
+| Core cards | `alarm-panel`, `button`, `energy-date-selection`, `energy-devices-detail-graph`, `entities`, `entity`, `heading`, `history-graph`, `iframe` (video URLs only), `markdown`, `picture`, `picture-entity`, `picture-glance`, `tile`, `weather-forecast` |
 | Entity rows | default entity rows (sensor, toggle, climate, cover, fan, humidifier, lock, valve, scene, script, input_*), `attribute`, `button`/`call-service`/`perform-action`, `divider`, `section`, `simple-entity` |
 | HACS cards | `custom:auto-entities`, `custom:bubble-card` (pop-up, button, media-player), `custom:button-card`, `custom:fab-card`, `custom:mushroom-climate-card`, `custom:mushroom-template-card`, `custom:refreshable-picture-card`, `custom:template-entity-row`, `custom:timer-bar-card`, `custom:xiaomi-vacuum-map-card` |
 
@@ -69,6 +69,13 @@ Everything else renders a placeholder with the card type.
   outside its subset renders as empty (logged as `unsupported template`).
 - browser_mod `javascript` is not executed (only the heartbeat `hass.callService(…)`).
 - New HA frontend features do not arrive automatically; each card is a port.
+- Camera live view: WebRTC only (no HLS or MJPEG streams, no two-way audio/talk button, no
+  `camera_view: auto` streaming); cameras without `web_rtc` show refreshing stills. BTicino
+  intercoms end a live view after ~30 s (`terminate`), the card then reconnects within its retry
+  budget. Opening a BTicino live view while that door unit is ringing *answers* the call (the
+  integration's answer mode, same as the web frontend).
+- `picture-entity`/`picture-glance`: no `state_filter`/CSS filters, no `dark_mode_image`; media
+  source images (`media-source://`) are not resolved.
 
 ## Architecture
 
@@ -102,6 +109,7 @@ DashboardActivity ─ DashboardScreen ─ SectionsView ─ GridSection ─ CardR
 | `icons` | MDI webfont (`assets/mdi.ttf`) + name map (`assets/mdi-map.txt`), `MdiIcon` |
 | `markdown` | Markdown subset parser and renderer (`ha-markdown` look) |
 | `format`, `image`, `ui`, `json` | formatting, image loading (bitmaps and SVG via AndroidSVG), controls (`HaSwitch`, `HaButton`, `LoopingVideo`, …), lenient JSON accessors |
+| `camera` | Camera live view: `WebRtcSignaling` (HA camera WebRTC messages, candidate queues), `SdpOffer` (offer reduction), `LiveStreamPolicy` (retry/throttle), `LiveStream`/`LiveStreamHub` (libwebrtc sessions, shared per camera), `CameraPicture` (still/live composable, `TextureView` renderer) |
 | `custom` | HACS cards: `button-card` (+ tiny JS-template evaluator, no JS engine), `auto-entities` (filter/sort engine, registry on demand via `get_entries`), `mushroom-template-card`, `template-entity-row`, `timer-bar-card`, `fab-card` (floating button drawn in `PopupHost.FloatingLayer`, fixed above the view, touch target 12px larger than the circle), `mushroom-climate-card` (state, hvac_action badge, temperature control) |
 
 ### Layout fidelity
@@ -186,6 +194,45 @@ stopped or the screen is off. Video URLs play their audio only.
 SVGs with a fixed root `width`/`height` (e.g. animated weather icons) are scaled into the target
 size through their viewBox (or `0 0 width height` when the viewBox is missing).
 
+### Camera live view (WebRTC)
+
+Camera pictures follow `hui-image`: `picture-entity` (camera entity) and `picture-glance`
+(`camera_image`) show stills from the camera's `entity_picture` (`/api/camera_proxy/…`), refreshed
+every 10 s while on screen. With `camera_view: live` they play the camera's WebRTC stream
+natively (libwebrtc, `io.getstream:stream-webrtc-android`). `custom:refreshable-picture-card`
+accepts `camera_view: live` too, with a camera `entity` or a `url` of the form
+`/api/camera_proxy/camera.x` (so a doorbell popup only needs the extra key):
+
+```yaml
+type: custom:refreshable-picture-card
+url: /api/camera_proxy/camera.eingang_bticino_intercom_schreygasse_wien_entrance_panel
+camera_view: live
+noMargin: true
+```
+
+Signaling uses HA's camera WebSocket API like `ha-web-rtc-player`: `camera/capabilities`
+(only cameras whose `frontend_stream_types` contain `web_rtc`), `camera/webrtc/get_client_config`
+(ICE servers, data channel), the `camera/webrtc/offer` subscription (`session`, `answer`,
+`candidate`, `error` events; unsubscribing closes the session on the camera) and
+`camera/webrtc/candidate` for trickled local candidates (sent once the `session_id` is known).
+The offer is receive-only (audio + video transceivers) and reduced by `SdpOffer` to one H264
+profile (constrained baseline, payload type 109) and Opus (111), about 2 KB: BTicino intercoms
+(`bticino_intercom`) reboot on offers above ~8 KB and send exactly those payload types; offers
+above 6000 bytes are never sent. Decoding uses the hardware H264 decoder on the shared EGL
+context; frames are drawn on a `TextureView` (`EglRenderer`), so they clip to the card's corners.
+
+- The still stays visible until the first frame; without `aspect_ratio` the picture takes the
+  video's aspect ratio (16:9 before the first frame). `fit_mode` `cover`/`contain`/`fill` apply.
+- Audio is received but muted (no playout at all); a speaker button in the corner unmutes it.
+- A stream runs only while its card is composed, its view active and the activity started: closing
+  the popup, swiping away or the screen going off ends the session (1.5 s grace, so a quick
+  re-layout keeps it). Several cards showing the same camera share one session (`LiveStreamHub`).
+- Failures are logged (`adb logcat -s CameraLive`) and retried at most 3 times (5 s, then 20 s
+  apart; offers for one camera are always ≥ 5 s apart); then the card falls back to stills
+  refreshed every 10 s. A stream that played for over 60 s gets a fresh retry budget when it ends.
+  A dropped HA connection ends the session (the offer is not re-sent automatically).
+- Only ARM ABIs are packaged (`arm64-v8a`, `armeabi-v7a`); libwebrtc adds ~9.5 MB to the APK.
+
 ### Hardware buttons
 
 HA automations stay the source of truth for the four hardware buttons (MQTT `button_event`,
@@ -262,7 +309,7 @@ auto-entities). Never throw from `Content`; show a `WarningCard` for bad configs
 ./gradlew :dashboard:testDebugUnitTest
 ```
 
-Unit tests cover the entity diff store, the subscription planner, the client protocol (against a
+Unit tests cover the camera WebRTC signaling, offer reduction and retry policy, the entity diff store, the subscription planner, the client protocol (against a
 fake HA WebSocket server), grid placement/sizing, grid options, markdown, colors and time
 formatting. An opt-in, read-only live test connects to a real instance:
 

@@ -47,6 +47,8 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.androidsvg)
+    // libwebrtc for camera live views (receive-only; native code for arm64-v8a/armeabi-v7a only, see app ndk.abiFilters)
+    implementation(libs.stream.webrtc)
 
     implementation(platform(libs.okhttpbom))
     implementation(libs.okhttp)
