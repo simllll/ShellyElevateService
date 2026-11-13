@@ -36,6 +36,8 @@ class DashboardConfigReceiver : BroadcastReceiver() {
             changed += key
         }
         editor.commit()
+        // The prefs change listener alone did not reliably reach the running dashboard
+        if (changed.isNotEmpty()) DashboardRuntime.get(context).applySettings()
         val result = if (changed.isEmpty()) "nothing changed (extras: ${DashboardSettings.ALL_KEYS.joinToString()})" else "updated: ${changed.joinToString()}"
         Log.i("DashboardConfig", result)
         setResultData(result)
