@@ -1,5 +1,14 @@
 package io.github.simllll.panelelevate.dashboard.popup
 
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import android.os.SystemClock
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -166,7 +175,7 @@ private fun PopupScope.ToggleRow(entity: EntityState) {
 
 /**
  * Media player controls like `more-info-media_player`: now playing, power/previous/play-pause/
- * next (as supported), volume with mute, -/+ (5 % steps, or volume_down/up) and a slider, sources.
+ * next (as supported), volume with mute, adaptive -/+ (or volume_down/up) and a slider, sources.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -201,27 +210,47 @@ private fun PopupScope.MediaControls(entity: EntityState) {
     }
 
     if (!off && (has(MP_VOLUME_SET) || has(MP_VOLUME_STEP))) {
-        val volume = (entity.attrDouble("volume_level") ?: 0.0).coerceIn(0.0, 1.0)
-        val muted = entity.attr("is_volume_muted").asString() == "true" || entity.attr("is_volume_muted").toString() == "true"
-        fun step(delta: Double) {
-            if (has(MP_VOLUME_SET)) call("volume_set", "volume_level" to ((volume + delta).coerceIn(0.0, 1.0) * 100).roundToInt() / 100.0)
-            else call(if (delta > 0) "volume_up" else "volume_down")
+        val reported = (entity.attrDouble("volume_level") ?: 0.0).coerceIn(0.0, 1.0)
+        val muted = entity.attr("is_volume_muted").toString().trim('"') == "true"
+        // Adaptive -/+: a single tap moves 1 %, taps in quick succession accelerate (1, 1, 2, 2, 3,
+        // 3, 5 %). Taps build on the pending value, not on the (lagging) reported volume.
+        var pending by remember { mutableStateOf<Double?>(null) }
+        var lastTap by remember { mutableLongStateOf(0L) }
+        var streak by remember { mutableIntStateOf(0) }
+        LaunchedEffect(lastTap) {
+            if (lastTap == 0L) return@LaunchedEffect
+            delay(VOLUME_PENDING_MS)
+            pending = null
+        }
+        val volume = pending ?: reported
+        fun step(direction: Int) {
+            val now = SystemClock.uptimeMillis()
+            streak = if (now - lastTap <= VOLUME_STREAK_MS) streak + 1 else 0
+            lastTap = now
+            if (!has(MP_VOLUME_SET)) {
+                call(if (direction > 0) "volume_up" else "volume_down")
+                return
+            }
+            val increment = VOLUME_STEPS[minOf(streak, VOLUME_STEPS.lastIndex)]
+            val target = (((pending ?: reported) + direction * increment).coerceIn(0.0, 1.0) * 100).roundToInt() / 100.0
+            pending = target
+            call("volume_set", "volume_level" to target)
         }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (has(MP_VOLUME_MUTE)) HaIconButton(if (muted) "mdi:volume-off" else "mdi:volume-high", { call("volume_mute", "is_volume_muted" to !muted) })
-            HaIconButton("mdi:minus", { step(-0.05) })
+            HaIconButton("mdi:minus", { step(-1) })
             if (has(MP_VOLUME_SET)) {
                 HaSlider(
                     (volume * 100).toFloat(),
-                    { call("volume_set", "volume_level" to (it / 100.0)) },
+                    { pending = null; call("volume_set", "volume_level" to (it / 100.0)) },
                     modifier = Modifier.weight(1f),
                     color = c.primary,
                 )
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            HaIconButton("mdi:plus", { step(0.05) })
+            HaIconButton("mdi:plus", { step(1) })
             if (has(MP_VOLUME_SET)) {
                 BasicText("${(volume * 100).roundToInt()} %", style = t.style(t.sizeM, color = c.secondaryText), modifier = Modifier.padding(start = 4.dp))
             }
@@ -239,6 +268,9 @@ private fun PopupScope.MediaControls(entity: EntityState) {
 }
 
 private const val MP_PAUSE = 1
+private val VOLUME_STEPS = doubleArrayOf(0.01, 0.01, 0.02, 0.02, 0.03, 0.03, 0.05)
+private const val VOLUME_STREAK_MS = 1_000L
+private const val VOLUME_PENDING_MS = 3_000L
 private const val MP_VOLUME_SET = 4
 private const val MP_VOLUME_MUTE = 8
 private const val MP_PREVIOUS = 16
