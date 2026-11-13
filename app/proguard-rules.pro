@@ -19,3 +19,20 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# --- PanelElevate (R8 enabled for release) ---
+# Readable stack traces in logcat/crash reports.
+-keepattributes SourceFile,LineNumberTable
+
+# Paho MQTT v5 loads its logger (JSR47Logger), network module factories (ServiceLoader) and
+# message bundles by name.
+-keep class org.eclipse.paho.mqttv5.** { *; }
+-dontwarn org.eclipse.paho.mqttv5.**
+
+# NanoHTTPD (HTTP API) and AndroidSVG: small, keep as is.
+-keep class fi.iki.elonen.** { *; }
+-keep class com.caverock.androidsvg.** { *; }
+-dontwarn com.caverock.androidsvg.**
+
+# Our own code uses no reflection on app classes, but the service, receivers and activities
+# are referenced from the manifest (kept automatically). Hidden framework APIs are reached
+# through reflection on android.* classes, which R8 does not touch.

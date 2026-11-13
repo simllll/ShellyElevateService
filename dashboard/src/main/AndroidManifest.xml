@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+        <!--
+            Runs in its own process so that a dashboard crash never takes the background service down.
+            Exported so it can be started via `adb shell am start -n` or by a launcher/automation.
+            The activity does not accept connection settings; those go through the receiver below.
+        -->
+        <activity
+            android:name=".DashboardActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:exported="true"
+            android:label="Dashboard"
+            android:launchMode="singleTask"
+            android:process=":dashboard"
+            android:screenOrientation="nosensor"
+            android:theme="@style/Theme.Dashboard" />
+
+        <!--
+            adb only: DUMP is held by the shell but not grantable to normal apps.
+            Same process as the activity so a running dashboard sees new settings immediately.
+        -->
+        <receiver
+            android:name=".DashboardConfigReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:process=":dashboard">
+            <intent-filter>
+                <action android:name="io.github.simllll.panelelevate.dashboard.CONFIGURE" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

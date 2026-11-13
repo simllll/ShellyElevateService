@@ -4,20 +4,24 @@ plugins {
 }
 
 android {
-    namespace = "com.stretter.shellyelevateservice"
+    namespace = "io.github.simllll.panelelevate"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.stretter.shellyelevateservice"
+        applicationId = "io.github.simllll.panelelevate"
         minSdk = 24
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 24
-        versionCode = 2_04_00
-        versionName = "2.4.0"
+        versionCode = 1_00_00
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+        // Only ARM devices (NSPanel Pro, Shelly Wall Displays); keeps libwebrtc's x86 builds out of the APK.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
@@ -40,7 +44,7 @@ android {
             if (signingKeystore != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -57,6 +61,10 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        // Compress native libraries (libwebrtc: 18 MB uncompressed); they are extracted on install.
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
     buildFeatures {
@@ -77,6 +85,7 @@ dependencies {
     implementation(platform(libs.okhttpbom))
     implementation(libs.okhttp)
     implementation(libs.appcompat)
+    implementation(project(":dashboard"))
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)

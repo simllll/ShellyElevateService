@@ -1,9 +1,9 @@
-# ShellyElevateService
+# PanelElevate
 
 > [!CAUTION]
 > All content in this repository is provided "as is" and may render your device unusable. Always exercise caution when working with your device. No warranty or guarantee is provided.
 
-ShellyElevate is a **background service** for the **Shelly Wall Display XL** that exposes hardware features to Home Assistant while letting you use the **official Home Assistant Companion app** as your dashboard.
+PanelElevate is a **background service** for the **Shelly Wall Display XL** (and the **Sonoff NSPanel Pro**, see [Supported devices](#supported-devices)) that exposes hardware features to Home Assistant while letting you use the **official Home Assistant Companion app** (or the built-in native dashboard) as your dashboard.
 
 ## Why?
 
@@ -11,13 +11,15 @@ The built-in WebView of the Shelly Wall Display is **slow and buggy**. It kept c
 
 However, switching to a third-party app means you lose access to the great hardware features: temperature/humidity sensors, light sensor, proximity sensor, 4 hardware buttons, and relays. There's no native way to expose these to Home Assistant when using the official HA app (or any other dashboard app like Fully Kiosk, WallPanel, etc.).
 
-**That's why this background service exists** - it lets you use whatever app you like for your dashboard while still having full access to all hardware features. ShellyElevate runs silently in the background and:
+**That's why this background service exists** - it lets you use whatever app you like for your dashboard while still having full access to all hardware features. PanelElevate runs silently in the background and:
 
 - Publishes all sensors and button events to Home Assistant via **MQTT**
 - Provides **screen dimming** with idle timeout (acts as a screensaver)
 - Includes an **app watchdog** to keep Home Assistant running in the foreground
 - Exposes an **HTTP API** for configuration and control
 - Handles **hardware button events** (4 buttons on the XL)
+- Optionally replaces the HA app with a **native dashboard** that renders your Lovelace dashboard
+  without a WebView (see [Native dashboard](#native-dashboard))
 
 ## Features
 
@@ -30,9 +32,30 @@ However, switching to a third-party app means you lose access to the great hardw
 | **Relay Control** | Control the built-in relays via MQTT or HTTP |
 | **Sensor Publishing** | Temperature, humidity, light (lux), proximity, screen brightness |
 | **HTTP API** | RESTful API for configuration and control, optional bearer token |
-| **Presence** | Wide-range presence sensor (XL) as occupancy binary sensor, optional wake on approach |
+| **Presence** | Wide-range presence sensor (XL) or proximity (NSPanel Pro) as occupancy binary sensor, optional wake on approach |
+| **Native dashboard** | Built-in Lovelace renderer (Kotlin/Compose, no WebView) with browser_mod emulation, see [`dashboard/README.md`](dashboard/README.md) |
+| **Bluetooth proxy** | Optional ESPHome-compatible Bluetooth proxy (passive scanning and active GATT connections) for Home Assistant, see [ESPHome Bluetooth proxy](#esphome-bluetooth-proxy) |
+
+## Supported devices
+
+One APK runs on all of them; the device is detected from `Build.MODEL` and only the hardware it
+really has is exposed (HTTP API, MQTT discovery).
+
+| Device | `Build.MODEL` | Relays | Temp / Hum | Light | Proximity | Presence | Buttons | Backlight |
+|--------|---------------|--------|------------|-------|-----------|----------|---------|-----------|
+| Shelly Wall Display (`STARGATE`) | `Stargate` | 1 | yes | yes | – | – | – | sysfs / Settings |
+| Shelly Wall Display 2 / X2 (`ATLANTIS`, `PEGASUS`) | `Atlantis`, `Pegasus` | 1 | yes | yes | yes | – | – | sysfs / Settings |
+| Shelly Wall Display XL (`BLAKE`) | `Blake` | 1 | yes | yes | yes | wide-range sensor | 4 | sysfs / Settings |
+| Sonoff NSPanel Pro 86 (`NSPANEL_PRO`) | `px30_evb` | 2 (GPIO 114/115) | – | yes | yes (reflectance) | from proximity | – | Settings API (min = sysfs 10), sleep = display off (screen-off timeout) |
+
+Unknown models are treated as the original Shelly Wall Display. If detection picks the wrong
+profile, set `deviceModel` to one of the names in brackets (`""`/`auto` = detect; needs an API
+token, takes effect after a service restart).
 
 ## Installation
+
+The steps below are for the Shelly Wall Display. For the NSPanel Pro see
+[Sonoff NSPanel Pro](#sonoff-nspanel-pro) (steps 4–7 are the same).
 
 ### 1. Enable Developer Mode on Shelly Wall Display XL
 
@@ -48,8 +71,8 @@ No jailbreak required! Just enable developer settings:
 Connect a USB cable to the display and install the APK:
 
 ```bash
-# Install ShellyElevate Service
-adb install ./shellyelevateservice.apk
+# Install PanelElevate Service
+adb install ./panelelevate.apk
 
 # Install Home Assistant Companion app (minimal version)
 adb install ./home-assistant-minimal.apk
@@ -60,13 +83,13 @@ adb install ./home-assistant-minimal.apk
 The service requires the **Write Settings** permission to control screen brightness. This must be granted manually:
 
 ```bash
-adb shell appops set com.stretter.shellyelevateservice WRITE_SETTINGS allow
+adb shell appops set io.github.simllll.panelelevate WRITE_SETTINGS allow
 ```
 
 Optionally, whitelist the app from battery optimization to prevent Android from killing the service:
 
 ```bash
-adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
+adb shell dumpsys deviceidle whitelist +io.github.simllll.panelelevate
 ```
 
 ### 4. Start the Service
@@ -74,24 +97,24 @@ adb shell dumpsys deviceidle whitelist +com.stretter.shellyelevateservice
 Start the service manually (it will auto-start on subsequent boots and after app updates):
 
 ```bash
-adb shell am start-foreground-service com.stretter.shellyelevateservice/.ShellyElevateService
+adb shell am start-foreground-service io.github.simllll.panelelevate/.PanelElevateService
 ```
 
 To verify it's running:
 
 ```bash
-adb shell dumpsys activity services com.stretter.shellyelevateservice
+adb shell dumpsys activity services io.github.simllll.panelelevate
 ```
 
 ### 5. Set an HTTP API token
 
 The HTTP API on port 8080 is reachable by everyone on your network. Settings that redirect the device
-(`mqttBroker`, `mqttPort`, `mqttUsername`, `mqttDeviceId`, `watchdogPackage`) can **only** be changed
+(`mqttBroker`, `mqttPort`, `mqttUsername`, `mqttDeviceId`, `watchdogPackage`, `deviceModel`) can **only** be changed
 over HTTP when an API token is set. The token itself can only be set via adb:
 
 ```bash
-adb shell am broadcast -n com.stretter.shellyelevateservice/.ApiTokenReceiver \
-  -a com.stretter.shellyelevateservice.SET_API_TOKEN --es token 'choose-a-long-random-token'
+adb shell am broadcast -n io.github.simllll.panelelevate/.ApiTokenReceiver \
+  -a io.github.simllll.panelelevate.SET_API_TOKEN --es token 'choose-a-long-random-token'
 ```
 
 (To remove the token again: same command with `--es token ''`.) The receiver is protected by
@@ -113,7 +136,200 @@ Once installed, configure the service via HTTP calls (see Configuration section 
 adb reboot
 ```
 
-After reboot, ShellyElevate will start automatically and launch the Home Assistant app (if watchdog is enabled).
+After reboot, PanelElevate will start automatically and launch the Home Assistant app (if watchdog is enabled).
+
+## Sonoff NSPanel Pro
+
+PanelElevate replaces the closed-source *NSPanel Pro Tools* app (`com.seaky.nspanelpro.tools`):
+one app provides MQTT sensors, relays, sleep/wake, brightness, reboot, watchdog and (optionally) the
+native dashboard.
+
+The NSPanel Pro runs an Android 8.1 userdebug build (480×480 screen). Its backlight node
+(`/sys/class/backlight/backlight/brightness`) is root-only and the shipped `/system/xbin/su` is
+not setuid, so PanelElevate works **without root**, with the same permissions NSPanel Pro Tools
+had (`WRITE_SETTINGS`, `WAKE_LOCK`):
+
+- **Brightness / dimming** go through the Android Settings API (Settings 0 = backlight 10).
+- **Sleep** with `screenSaverMinBrightness` `0` (the NSPanel default) switches the display really
+  off: the screen-off timeout is lowered to 1 s, Android turns the display off, and the original
+  timeout is restored right after (also after a crash, on the next start). While the display is
+  off a partial wake lock keeps MQTT and the sensors running, and the watchdog pauses.
+  `screenSaverMinBrightness` > 0 dims instead.
+- **Wake** (touch, proximity with `wakeOnProximity`, MQTT/HTTP) uses a short screen wake lock.
+  Touches are read from the touchscreen node (`/dev/input/event1` is world-readable); a tap on the
+  off display is dropped by Android, so it never reaches the dashboard.
+- Light and proximity come from the Android sensors (their raw input nodes are not readable).
+  The proximity sensor reports raw infrared **reflectance**, not a distance (higher = closer:
+  ~20 at rest, 55–80 with a person standing in front of the panel, 100–6000 with a hand close to
+  it; Android's `maxRange` of 9 is meaningless). *Near* is ≥ `proximityThreshold` (default 40, 25–500;
+  also the *Proximity Threshold* number entity in HA) and *far* ≤ ¾ of it (hysteresis), which
+  drives `presence` and `wakeOnProximity`. Watch the proximity sensor while standing in front of
+  the panel to pick a value above the resting level (it may be higher in daylight). It only reacts to someone directly in front of the
+  panel, not across a room. Its value is published at most every 5 s plus on every near/far change (the
+  sensor itself reports several values per second), without a unit.
+- **Relays**: relay 1 and 2 are GPIO 114 and 115 (`/sys/class/gpio/gpio11x/value`, writable by
+  apps; the same nodes NSPanel Pro Tools drives). GPIO 113 is never touched.
+- **Reboot** sets the `sys.powerctl` property, which init accepts from the app on this
+  permissive-SELinux userdebug build; the panel is back after about 70 s.
+- If the touchscreen node is not readable, a 1 px overlay detects touches instead (needs
+  `SYSTEM_ALERT_WINDOW`). A setuid-root `su` (e.g. Magisk), if present, is used automatically for
+  the backlight, `reboot` and `restart_app`. Without it, `restart_app` only works with the native
+  dashboard as watchdog target (it restarts the `:dashboard` process); other apps cannot be
+  force-stopped.
+
+> [!WARNING]
+> The stock firmware ships with `ro.adb.secure=0`: adb on port 5555 accepts **any** connection
+> without an authorization prompt, so everyone on your network can control the panel. Keep it in
+> a trusted network/VLAN.
+
+### Setup
+
+```bash
+adb connect <nspanel-ip>:5555        # or USB
+
+# 1. Stop NSPanel Pro Tools first: it also drives the backlight and would fight over it
+adb shell am force-stop com.seaky.nspanelpro.tools
+adb shell pm disable-user --user 0 com.seaky.nspanelpro.tools   # or: adb uninstall com.seaky.nspanelpro.tools
+
+# 2. Install and grant
+adb install ./panelelevate.apk
+adb shell appops set io.github.simllll.panelelevate WRITE_SETTINGS allow
+adb shell appops set io.github.simllll.panelelevate SYSTEM_ALERT_WINDOW allow   # only needed if /dev/input/event1 is not readable
+adb shell dumpsys deviceidle whitelist +io.github.simllll.panelelevate
+
+# 3. Android must not turn the screen off or change the brightness on its own
+#    (PanelElevate's idle timer decides; the sleep trick restores this value every time)
+adb shell settings put system screen_off_timeout 2147483647
+adb shell settings put system screen_brightness_mode 0
+
+# 4. Start, then set the API token and configure as in steps 4–6 above
+adb shell am start-foreground-service io.github.simllll.panelelevate/.PanelElevateService
+```
+
+`adb logcat -s PanelElevateService ScreenOffTimeout InputEventReader DeviceHelper` shows sleep/wake
+(`Switching screen off via screen-off timeout`, `Screen-off timeout restored to …`) and which input
+devices are read.
+
+### Migrating from NSPanel Pro Tools
+
+NSPanel Pro Tools announced its own MQTT device. After switching, delete that device in Home
+Assistant (Settings → Devices → MQTT) and update automations to the new entities
+(`<id>` = `mqttDeviceId`, the entity ids follow the device name *Sonoff NSPanel Pro*):
+
+| NSPanel Pro Tools | PanelElevate |
+|-------------------|---------------|
+| light / lux sensor | `sensor.…_light` (topic `shellyelevateservice/<id>/lux`) |
+| proximity sensor | `sensor.…_proximity` (reflectance) + `binary_sensor.…_presence` (near = ON) |
+| `switch_1` / `switch_2` (relays) | `switch.…_relay` / `switch.…_relay_1` (topics `relay_command`, `relay_command_1`) |
+| `wake_up` command | `button.…_wake` (or `POST /device/wake`) |
+| `sleep` command | `button.…_sleep` (or `POST /device/sleep`) |
+| screen on/off state | `binary_sensor.…_sleeping` |
+| brightness | `number.…_screen_brightness` + `switch.…_auto_brightness` |
+| `reboot` command | `button.…_reboot` |
+| `default_app` / `launcher` | watchdog: `watchdogPackage` (`dashboard` = native dashboard) + `watchdogEnabled`; `button.…_restart_app` |
+| `adb` command | not offered: enable ADB over network once via `adb tcpip 5555` |
+
+There are no temperature, humidity or button entities on the NSPanel. The `adc-keys` input
+device (ESC/HOME/VOLUME) is not wired on the 86 model; its key codes are only published with
+`debugKeys` (topic `unknown_key`).
+
+## Native dashboard
+
+Instead of the HA Companion app, PanelElevate can show your dashboard itself: a native
+(Kotlin + Jetpack Compose) Lovelace renderer in its own process (`:dashboard`). It loads the
+dashboard config live from Home Assistant and draws the cards natively in the HA default (dark)
+theme, so popups and views open instantly even on the slow SoCs of these panels, and a dashboard
+change in HA shows up without touching the device.
+
+- Layouts: sections and masonry views, view badges; swipe navigation between views (live pager),
+  back key, automatic return to the first view after inactivity.
+- Core cards plus common HACS cards (bubble-card, button-card, auto-entities, Mushroom,
+  template-entity-row, timer-bar, xiaomi-vacuum-map-card, fab-card, …); unknown card types show a
+  placeholder.
+- browser_mod emulation: registers as a browser_mod browser, so popups, notifications, navigate
+  and the browser's media player (TTS) from existing automations keep working.
+- Instant on-screen feedback for the hardware buttons.
+- Guest lock: while an HA entity (default `binary_sensor.lock_dashboards`) is on, touches only show
+  a lock screen and the display goes back to sleep after 10 s; automation popups (alarm keypad)
+  stay usable. The dashboard asks the service to sleep through a not-exported broadcast receiver
+  (`GuestLockContract.ACTION_SLEEP`, same path as MQTT `sleep`).
+
+Setup, the full list of supported cards and the limitations are in
+[`dashboard/README.md`](dashboard/README.md). Use `watchdogPackage` `dashboard` to keep it in
+front ([Native dashboard as watchdog target](#native-dashboard-as-watchdog-target)).
+
+## ESPHome Bluetooth proxy
+
+Both panels have Bluetooth LE. With `bleProxyEnabled` (default `false`) PanelElevate speaks
+the ESPHome native API on TCP port **6053** and Home Assistant's ESPHome integration adds the
+panel as a Bluetooth proxy, like an ESP32 running `bluetooth_proxy:`. It forwards
+advertisements (plant sensors, Oral-B, iBeacons, …) and lets integrations open **active GATT
+connections** through it (e.g. La Marzocco, Xiaomi plant sensor battery/history).
+
+- Plaintext API without password (no API encryption key). Device name
+  `panelelevate-<mqttDeviceId>`, announced via mDNS (`_esphomelib._tcp`), so HA offers it under
+  *Discovered*; adding it manually by IP and port 6053 works too.
+- Feature flags: passive scan, active connections (3 slots), remote caching, pairing, cache
+  clearing, raw advertisements, scanner state. Android always scans actively (scan responses
+  are requested); `BluetoothScannerSetMode` is answered with the current (active) mode.
+- GATT handles are the real ATT handles, so HA's service cache stays valid across connections.
+- No entities: the proxy only shows up as a Bluetooth scanner/proxy in HA.
+- Wi-Fi impact measured with continuous low-latency scanning: ping to the HA host rose from
+  2.6 to 2.9 ms on average on the Wall Display XL (9.2 → 10.3 ms on the NSPanel Pro), no extra
+  packet loss.
+
+Setup (no root needed):
+
+```sh
+# Location permission (BLE scans return nothing without it) and location services on
+adb shell pm grant io.github.simllll.panelelevate android.permission.ACCESS_FINE_LOCATION
+adb shell pm grant io.github.simllll.panelelevate android.permission.ACCESS_COARSE_LOCATION
+adb shell settings put secure location_mode 3
+# Bluetooth must be on
+adb shell settings get global bluetooth_on   # 1
+# Enable the proxy (or the "Bluetooth Proxy" switch in HA via MQTT, or bleProxyEnabled via the HTTP API)
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+    -a io.github.simllll.panelelevate.SET_SETTING --es key bleProxyEnabled --es value true
+```
+
+Then add the ESPHome device in HA (Settings → Devices & services, discovered
+`panelelevate-…`, or *Add integration → ESPHome* with the panel's IP, port 6053, no
+encryption key). Notes:
+
+- **NSPanel Pro (Android 8.1)**: Android 8.1 pauses *unfiltered* BLE scans while the display
+  is off; the proxy passes an empty scan filter and keeps scanning with the display off
+  (verified: ~400 results in 30 s while asleep). The location permission must be granted as a
+  runtime permission (`adb shell pm grant io.github.simllll.panelelevate
+  android.permission.ACCESS_FINE_LOCATION`), otherwise Android rejects the scan with a
+  SecurityException in logcat. The Bluetooth MAC is not readable for apps there, so the
+  proxy reports only the Wi-Fi MAC (HA then uses it as the scanner's source address).
+- **Wall Display XL (Android 11)**: scans keep running with the display dimmed.
+
+## Acoustic doorbell detection
+
+For door bells that ring an indoor unit only locally (no event in HA), the panel can listen
+for the ringtone with its microphone (`doorbellDetectEnabled`, default `false`, also the
+"Doorbell Detection" switch in HA). On a match it fires the MQTT event entity **Doorbell sound**
+(`event_types: [ring]`, device class `doorbell`); combine it in HA with your intercom's own
+ring events (e.g. "tone heard and no intercom call within ±10 s = flat door").
+
+- Continuous AudioRecord (source MIC, 16 kHz mono) in the service, also with the display off;
+  the microphone is released when the setting is off.
+- Goertzel filters on the three notes of the BTicino chime (1760 Hz → 2090 Hz → 1395 Hz, ±3 %)
+  and reference frequencies between them in 64 ms blocks. A note counts when it is above
+  `doorbellMinLevel` (default 100, ≈ a sine of amplitude 200) and `doorbellMinRatio` (default 8)
+  times the strongest reference bin; the notes must follow in order, each ≥ 2 blocks, ≤ 0.6 s
+  apart. Cooldown 5 s. Steps, doors and voices (below 1 kHz, not tonal) do not match.
+- Log tag `DoorbellDetector` (levels and ratios of each hit).
+- Needs `adb shell pm grant io.github.simllll.panelelevate android.permission.RECORD_AUDIO`.
+
+Recording samples for tuning (adb only; the detector pauses while a sample is recorded):
+
+```sh
+adb shell am broadcast -n io.github.simllll.panelelevate/.audio.AudioSampleReceiver \
+    -a io.github.simllll.panelelevate.RECORD_AUDIO_SAMPLE --ei seconds 60 [--es source mic]
+adb pull /sdcard/Android/data/io.github.simllll.panelelevate/files/audio/
+```
 
 ## Recommended Setup
 
@@ -130,7 +346,9 @@ This is the setup I use on my Shelly Wall Display XL:
    - Look for `home-assistant-android-minimal-*.apk`
    - This is the default app monitored by the watchdog
 
-3. **ShellyElevateService** - This service running in the background
+3. **PanelElevateService** - This service running in the background
+
+Alternatively skip the HA app and use the [native dashboard](#native-dashboard).
 
 ## Configuration
 
@@ -168,6 +386,39 @@ curl -X POST http://<device-ip>:8080/settings \
   }'
 ```
 
+#### Native dashboard as watchdog target
+
+Set `watchdogPackage` to `dashboard` (or the own package name `io.github.simllll.panelelevate`)
+to keep the built-in native dashboard (see [`dashboard/README.md`](dashboard/README.md)) in front
+instead of the HA app. The watchdog then checks the `:dashboard` process and starts
+`DashboardActivity` directly; `restart_app` kills only the dashboard process (never the service)
+and relaunches it after 500 ms. Switching between HA app and dashboard works at runtime; the next
+check runs immediately after the change.
+
+Without an HTTP API token, the watchdog settings can be changed via adb (the receiver is protected
+by `android.permission.DUMP` like the token receiver; only `watchdogPackage`, `watchdogEnabled`
+and `watchdogInterval` are accepted):
+
+```bash
+# switch to the native dashboard
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+  -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogPackage --es value dashboard
+
+# back to the HA Companion app
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+  -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogPackage \
+  --es value io.homeassistant.companion.android.minimal
+
+# enable/disable, interval in seconds
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+  -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogEnabled --es value true
+adb shell am broadcast -n io.github.simllll.panelelevate/.AdbSettingReceiver \
+  -a io.github.simllll.panelelevate.SET_SETTING --es key watchdogInterval --es value 10
+```
+
+The broadcast result (`data="Set watchdogPackage = dashboard"` or `data="Rejected …"`) shows
+whether the value was accepted.
+
 ### Screen Dimming
 
 ```bash
@@ -199,12 +450,12 @@ stored as a number). Nothing is stored if any key is rejected.
 ### Device Control
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/device/relay?num=0` | Get relay state |
+| GET | `/device/relay?num=0` | Get relay state (`num` 0 = relay 1, 1 = relay 2) |
 | POST | `/device/relay` | Set relay state `{"num": 0, "state": true}` |
 | GET | `/device/getTemperature` | Get temperature |
 | GET | `/device/getHumidity` | Get humidity |
 | GET | `/device/getLux` | Get light level |
-| GET | `/device/getProximity` | Get proximity distance |
+| GET | `/device/getProximity` | Get proximity value (distance in cm; reflectance on the NSPanel Pro) |
 | GET/POST | `/device/wake` | Wake screen |
 | GET/POST | `/device/sleep` | Dim screen |
 | POST | `/device/reboot` | Reboot device |
@@ -221,7 +472,8 @@ stored as a number). Nothing is stored if any key is rejected.
 
 ## MQTT Topics
 
-All topics are prefixed with `shellyelevateservice/<client-id>/`.
+All topics are prefixed with `shellyelevateservice/<client-id>/` (kept from ShellyElevate so existing
+Home Assistant entities and automations keep working after the rename to PanelElevate).
 
 ### Availability
 | Topic | Description |
@@ -234,12 +486,12 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 | `temp` | Temperature in °C (every 30 s) |
 | `hum` | Humidity in % (every 30 s) |
 | `lux` | Light level in lux |
-| `proximity` | Proximity distance in cm |
-| `presence` | Presence sensor (ON = near / OFF = far), XL wide-range sensor |
+| `proximity` | Proximity distance in cm (NSPanel Pro: reflectance, at most every 5 s) |
+| `presence` | Presence sensor (ON = near / OFF = far): XL wide-range sensor, NSPanel Pro proximity |
 | `bri` | Screen brightness (0-255) |
 | `auto_bri` | Automatic brightness enabled (ON/OFF) |
 | `sleeping` | Screen dimmed state (ON/OFF) |
-| `relay_state` | Relay state (ON/OFF) |
+| `relay_state`, `relay_state_1` | Relay 1 / relay 2 state (ON/OFF) |
 
 ### Events (for automations)
 | Topic | Payload | Description |
@@ -259,13 +511,14 @@ All topics are prefixed with `shellyelevateservice/<client-id>/`.
 ### Commands (subscribe)
 | Topic | Payload | Description |
 |-------|---------|-------------|
-| `relay_command` | `ON` / `OFF` | Control relay |
+| `relay_command`, `relay_command_1` | `ON` / `OFF` | Control relay 1 / relay 2 |
 | `bri_set` | `0`-`255` | Set screen brightness (turns automatic brightness off) |
 | `auto_bri_set` | `ON` / `OFF` | Turn automatic brightness on/off |
+| `proximity_threshold_set` | `25`-`500` | Near threshold of the NSPanel Pro proximity sensor (state topic `proximity_threshold`) |
 | `sleep` | any | Dim screen |
 | `wake` | any | Wake screen |
 | `reboot` | any | Reboot device |
-| `restart_app` | any | Force kill and restart the watchdog app |
+| `restart_app` | any | Force kill and restart the watchdog app (native dashboard: only its process) |
 | `update` | any | Re-publish discovery and all states |
 
 Retained messages on command topics are ignored (a retained `reboot` can never cause a reboot loop).
@@ -274,17 +527,18 @@ Home Assistant comes `online`.
 
 ## Home Assistant Auto-Discovery
 
-ShellyElevate publishes MQTT discovery config to `homeassistant/device/<client-id>/config`. After connecting to MQTT, the device will automatically appear in Home Assistant with:
+PanelElevate publishes MQTT discovery config to `homeassistant/device/<client-id>/config`. After connecting to MQTT, the device will automatically appear in Home Assistant with:
 
-- Temperature sensor
-- Humidity sensor
+- Temperature sensor (if available)
+- Humidity sensor (if available)
 - Light sensor
 - Proximity sensor (if available)
 - Presence binary sensor (occupancy, if available)
 - Screen Brightness number (slider 0-255)
 - Auto Brightness switch
+- Proximity Threshold number (NSPanel Pro)
 - Sleeping binary sensor
-- Relay switch(es)
+- Relay switch(es) (if available)
 - Button events (for automations)
 - Sleep/Wake/Reboot/Restart App buttons
 
@@ -410,7 +664,7 @@ All settings can be configured via `POST /settings` with a JSON body.
 |-----|------|---------|-------------|
 | `screenSaver` | boolean | `true` | Enable screen dimming on idle |
 | `screenSaverDelay` | int | `45` | Seconds of inactivity before dimming |
-| `screenSaverMinBrightness` | int | `10` | Brightness level when dimmed (0-255) |
+| `screenSaverMinBrightness` | int | `10` (NSPanel Pro: `0`) | Brightness level when dimmed (0-255; on the NSPanel Pro `0` switches the display off) |
 | `wakeOnProximity` | boolean | `false` | Wake screen when the proximity/presence sensor reports "near" |
 
 ### App Watchdog Settings
@@ -418,8 +672,8 @@ All settings can be configured via `POST /settings` with a JSON body.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `watchdogEnabled` | boolean | `false` | Enable app watchdog |
-| `watchdogPackage` | string | `io.homeassistant.companion.android.minimal` | Package name of app to keep running |
-| `watchdogInterval` | int | `10` | Check interval in seconds |
+| `watchdogPackage` | string | `io.homeassistant.companion.android.minimal` | Package name of app to keep running (`dashboard` = native dashboard) |
+| `watchdogInterval` | int | `10` | Check interval in seconds (changes apply from the next check) |
 
 ### Other Settings
 
@@ -429,6 +683,11 @@ All settings can be configured via `POST /settings` with a JSON body.
 | `httpApiToken` | string | `""` | Bearer token for the HTTP API (set via adb, see Installation step 5; masked in `GET /settings`) |
 | `mediaEnabled` | boolean | `true` | Enable media/audio playback |
 | `debugKeys` | boolean | `false` | Publish unknown key codes to MQTT for debugging |
+| `bleProxyEnabled` | boolean | `false` | ESPHome Bluetooth proxy on port 6053 (see [ESPHome Bluetooth proxy](#esphome-bluetooth-proxy); also settable via adb and the MQTT switch) |
+| `doorbellDetectEnabled` | boolean | `false` | Acoustic doorbell detection via the microphone (see [Acoustic doorbell detection](#acoustic-doorbell-detection); also settable via adb and the MQTT switch) |
+| `doorbellMinRatio` | int | `8` | Doorbell detector: minimum ratio of a note to the strongest reference frequency |
+| `doorbellMinLevel` | int | `100` | Doorbell detector: minimum note level (Goertzel magnitude) |
+| `deviceModel` | string | not set (detect) | Force a device profile, e.g. `NSPANEL_PRO` or `BLAKE` (see [Supported devices](#supported-devices); protected, applies after a service restart) |
 
 ## Building
 
