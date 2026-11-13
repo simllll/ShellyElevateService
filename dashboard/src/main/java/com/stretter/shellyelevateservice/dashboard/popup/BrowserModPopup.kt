@@ -145,10 +145,11 @@ internal fun PopupScope.BrowserModPopup(state: BrowserModPopupState) {
             val icons = headerIcons(data)
             if (title != null || state.dismissable || icons.isNotEmpty()) {
                 Row(
-                    Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                    // The close button reaches the left edge: the corner is where touch is least precise
+                    Modifier.fillMaxWidth().padding(start = 0.dp, end = 8.dp, top = 2.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (state.dismissable) HaIconButton(data.string("dismiss_icon") ?: "mdi:close", onClick = { dismiss() })
+                    if (state.dismissable) HaIconButton(data.string("dismiss_icon") ?: "mdi:close", onClick = { dismiss() }, size = 64.dp, iconSize = 28.dp)
                     else Spacer(Modifier.width(16.dp))
                     BasicText(
                         title.orEmpty(),
